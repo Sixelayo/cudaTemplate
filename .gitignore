@@ -2,4 +2,4 @@
 *.o
 *.a
 *.exp
-*.lib
+exe/**/*.lib

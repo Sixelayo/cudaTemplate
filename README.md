@@ -1,6 +1,6 @@
 # cudaTemplate
  
-starter kit for GPU programming, using VSCode
+starter kit for GPU programming, if you want to use Visual Studio Code
 
 # Requierement
 
