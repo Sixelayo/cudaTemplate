@@ -9,7 +9,7 @@
             "${file}",
             //the following doesn't expand properly in vs code task idk how to fix it. Uses a list of files instead
             //"(Get-ChildItem -Path .\\imgui\\ -Filter *.cpp | ForEach-Object { $_.FullName })", 
-            "./imgui/imgui_demo.cpp", //probably not needed
+            //"./imgui/imgui_demo.cpp", //probably not needed
             "./imgui/imgui_draw.cpp",
             "./imgui/imgui_impl_glfw.cpp",
             "./imgui/imgui_impl_opengl3.cpp",
@@ -24,7 +24,8 @@
             "-lopengl32",
             "-luser32",
             "-lgdi32",
-            "-lshell32"
+            "-lshell32",
+            //"--verbose"
         ],
         "options": {
             "cwd": "${fileDirname}"

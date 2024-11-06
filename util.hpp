@@ -7,8 +7,9 @@
 #include "./imgui/imgui_impl_glfw.h"
 #include "./imgui/imgui_impl_opengl3.h"
 
-#define CPU_MODE 1
-#define GPU_MODE 2
+#define CPU_MODE 0
+#define GPU_MODE 1
+#define NB_MODE 2 //assuming you want to add more mode. mode is update as such : mode = (mode+1)%NB_MODE
 
 #ifndef NDEBUG
     #define checkCudaErrors(err) __checkCudaErrors(err, __FILE__, __LINE__)
@@ -55,14 +56,14 @@ void newframeImGui(){
     ImGui_ImplOpenGL3_NewFrame();
     ImGui_ImplGlfw_NewFrame();
     ImGui::NewFrame();
-    
-    //TORM
-    ImGui::Begin("Settings");
+}
+
+void wdw_info(){
+    ImGui::Begin("Base info");
 	if(ImGui::Button("update")){
 		ImGui::Text("ahah");
 	}
 	ImGui::End();
-    
 }
 
 void multiViewportImGui(GLFWwindow* window){
@@ -92,4 +93,5 @@ void shutdownImGui(){
 }
 
 
-}
+} //end namespace utl
+
