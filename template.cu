@@ -10,17 +10,26 @@ namespace gbl{
     float4* pixels;
 
     int mode = CPU_MODE;
+    bool needResize = false;
 
     float scale = 0.003f;
     //mouse coordinate
     float mx, my;
 
+    int frameAcc = 0; //number of frame since last FPS calculation
+    double prevUpdt = 0.0; //time at previous FPS evaluation
+    int currentFPS = 0.0f;
+
+    
 }//end namespace gbl
 
 
 namespace cpu{
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
+    }
+    void reinit(){
+        gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
     }
     void clean(){
         free(gbl::pixels);
@@ -56,6 +65,9 @@ namespace gpu{
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
     }
+    void reinit(){
+        gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
+    }
     void clean(){
         free(gbl::pixels);
     }
@@ -74,28 +86,70 @@ void init(){
         case GPU_MODE: gpu::init(); break;
 	}
 }
+void reinit(){
+	switch (gbl::mode){
+        case CPU_MODE: cpu::reinit(); break;
+        case GPU_MODE: gpu::reinit(); break;
+	}
+}
 void toggleMode(int m){
 	clean();
 	gbl::mode = (gbl::mode+1)%NB_MODE;
 	init();
 }
 
+
+namespace gbl{
+    void resizePixelsBuffer(){
+        reinit();
+    }
+
+    //handle fps computation, and reallocating buffer if needed(to avoid too many call to mallloc/free)
+    void calculate(GLFWwindow* window){
+        frameAcc++;
+        double timeCurr  = glfwGetTime();
+        float elapsedTime = timeCurr-prevUpdt;
+        if(elapsedTime>FPS_UPDATE_DELAY){
+            currentFPS = frameAcc / elapsedTime ;
+            frameAcc = 0;
+            prevUpdt = timeCurr;
+            if(needResize){
+                glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
+                resizePixelsBuffer();
+                needResize = false;
+            }
+        }
+
+    }
+}
+
+
 namespace cbk{ 
     /*various callback
-    You must ALWAYS forward the event to ImGui before processing it
+    You must ALWAYS forward the event to ImGui before processing it (except window resizing)
     You can find relevant ImGui callback in ./imgui/imgui_impl_glfw.cpp line 536 in function ImGui_ImplGlfw_InstallCallbacks
     */
 
-    void mouse_button(GLFWwindow* window, int button, int action, int mods){
-        // Forward the event to ImGui
-        ImGuiIO& io = ImGui::GetIO();
-        ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
+    // void mouse_button(GLFWwindow* window, int button, int action, int mods){
+    //     // Forward the event to ImGui
+    //     ImGuiIO& io = ImGui::GetIO();
+    //     ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
         
-        //if ImGui doesn't want the event, process it
+    //     //if ImGui doesn't want the event, process it
+    //     if(!io.WantCaptureMouse){
+            
+    //     }
+    // }
+
+    static void cursor_position(GLFWwindow* window, double xpos, double ypos){
+        //forward the event to ImGui
+        ImGuiIO& io = ImGui::GetIO();
+        ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
+
+        //if ImGui doesn't want the event, process i
         if(!io.WantCaptureMouse){
-            double xpos, ypos;
-            glfwGetCursorPos(window, &xpos, &ypos);
-            if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+            int leftState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
+            if(leftState == GLFW_PRESS){
                 gbl::mx = (float)(gbl::scale*(xpos - gbl::SCREEN_X / 2));
                 gbl::my = -(float)(gbl::scale*(ypos - gbl::SCREEN_Y / 2));
             }
@@ -112,6 +166,11 @@ namespace cbk{
             if (yoffset >0) gbl::scale /= 1.05f;
 	        else gbl::scale *= 1.05f;
         }
+    }
+
+    void window_size(GLFWwindow* window, int width, int height){
+        //reszing logic handled in gbl::resizePixelsBuffer() called from gbl::calculate
+        gbl::needResize = true;
     }
 
 }//end namespace cbk
@@ -138,8 +197,11 @@ int main(void){
     init();
 
     /* Initialize callback*/
-    glfwSetMouseButtonCallback(window, cbk::mouse_button);
+    //glfwSetMouseButtonCallback(window, cbk::mouse_button);
+    glfwSetCursorPosCallback(window, cbk::cursor_position);
     glfwSetScrollCallback(window, cbk::scroll);
+    glfwSetWindowSizeCallback(window, cbk::window_size);
+
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -147,13 +209,14 @@ int main(void){
         /* Poll for and process events */
         glfwPollEvents();
 
+        /* Interface*/
         utl::newframeImGui();
-        utl::wdw_info();
+        utl::wdw_info(gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
         
         /* Render here */
-        //glClear(GL_COLOR_BUFFER_BIT);
-        cpu::example(); //calcule colors
-        glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
+        gbl::calculate(window);
+        cpu::example(); 
+        if(!gbl::needResize) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         
         /* end frame for imgui*/
         utl::endframeImGui();
