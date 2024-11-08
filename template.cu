@@ -1,27 +1,17 @@
 #include "util.hpp"
 #define TITLE "template"
 
-/* use task to compile or run command*/
+/* use task to compile or run command TODO*/
 
 
-namespace gbl{
-    int SCREEN_X=640;
-    int SCREEN_Y=480;
-    float4* pixels;
 
-    int mode = CPU_MODE;
-    bool needResize = false;
+namespace prm{
 
     float scale = 0.003f;
     //mouse coordinate
     float mx, my;
 
-    int frameAcc = 0; //number of frame since last FPS calculation
-    double prevUpdt = 0.0; //time at previous FPS evaluation
-    int currentFPS = 0.0f;
-
-    
-}//end namespace gbl
+} //end namespace prm
 
 
 namespace cpu{
@@ -39,15 +29,15 @@ namespace cpu{
         int i, j;
         for (i = 0; i<gbl::SCREEN_Y; i++){
             for (j = 0; j<gbl::SCREEN_X; j++){
-                float x = (float)(gbl::scale*(j - gbl::SCREEN_X / 2));
-                float y = (float)(gbl::scale*(i - gbl::SCREEN_Y / 2));
+                float x = (float)(prm::scale*(j - gbl::SCREEN_X / 2));
+                float y = (float)(prm::scale*(i - gbl::SCREEN_Y / 2));
                 float4* p = gbl::pixels + (i*gbl::SCREEN_X + j);
                 // default: black
                 p->x = 0.0f;
                 p->y = 0.0f;
                 p->z = 0.0f;
                 p->w = 1.0f;
-                if (sqrt((x - gbl::mx)*(x - gbl::mx) + (y - gbl::my)*(y - gbl::my))<0.01)
+                if (sqrt((x - prm::mx)*(x - prm::mx) + (y - prm::my)*(y - prm::my))<0.01)
                     p->x = 1.0f;
                 else if ((i == gbl::SCREEN_Y / 2) || (j == gbl::SCREEN_X / 2))
                 {
@@ -76,8 +66,8 @@ namespace gpu{
 
 void clean(){
 	switch (gbl::mode){
-        case CPU_MODE: cpu::clean(); break;
-        case GPU_MODE: gpu::clean(); break;
+        case CPU_MODE: gpu::clean(); break;
+        case GPU_MODE: cpu::clean(); break;
 	}
 }
 void init(){
@@ -91,11 +81,6 @@ void reinit(){
         case CPU_MODE: cpu::reinit(); break;
         case GPU_MODE: gpu::reinit(); break;
 	}
-}
-void toggleMode(int m){
-	clean();
-	gbl::mode = (gbl::mode+1)%NB_MODE;
-	init();
 }
 
 
@@ -150,8 +135,8 @@ namespace cbk{
         if(!io.WantCaptureMouse){
             int leftState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
             if(leftState == GLFW_PRESS){
-                gbl::mx = (float)(gbl::scale*(xpos - gbl::SCREEN_X / 2));
-                gbl::my = -(float)(gbl::scale*(ypos - gbl::SCREEN_Y / 2));
+                prm::mx = (float)(prm::scale*(xpos - gbl::SCREEN_X / 2));
+                prm::my = -(float)(prm::scale*(ypos - gbl::SCREEN_Y / 2));
             }
         }
     }
@@ -163,8 +148,8 @@ namespace cbk{
         
         //if ImGui doesn't want the event, process it
         if(!io.WantCaptureMouse){
-            if (yoffset >0) gbl::scale /= 1.05f;
-	        else gbl::scale *= 1.05f;
+            if (yoffset >0) prm::scale /= 1.05f;
+	        else prm::scale *= 1.05f;
         }
     }
 
@@ -211,7 +196,7 @@ int main(void){
 
         /* Interface*/
         utl::newframeImGui();
-        utl::wdw_info(gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+        utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
         
         /* Render here */
         gbl::calculate(window);

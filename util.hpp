@@ -28,12 +28,29 @@
     inline void checkKernelErrors() {}
 #endif
 
-#define CPU_MODE 0
-#define GPU_MODE 1
-#define NB_MODE 2 //assuming you want to add more mode. mode is update as such : mode = (mode+1)%NB_MODE
+#define CPU_MODE 1
+#define GPU_MODE 2
 
 #define FPS_UPDATE_DELAY 0.5
 
+
+//global variables
+namespace gbl{
+    int SCREEN_X=640;
+    int SCREEN_Y=480;
+    float4* pixels;
+    float4* d_pixels;
+
+    int mode = GPU_MODE;
+    bool needResize = false;
+
+    int frameAcc = 0; //number of frame since last FPS calculation
+    double prevUpdt = 0.0; //time at previous FPS evaluation
+    int currentFPS = 0.0f;
+}//end namespace gbl
+
+
+void clean(); void init();
 namespace utl{
     
 void initImGui(GLFWwindow* window){
@@ -61,8 +78,19 @@ void newframeImGui(){
     ImGui::NewFrame();
 }
 
-void wdw_info(int sx, int sy, int fps){
+
+void toggleMode(int m){
+	clean();
+	init();
+}
+
+void wdw_info(int mode, int sx, int sy, int fps){
     ImGui::Begin("Base info");
+
+    ImGui::Text("Mode : "); 
+    ImGui::SameLine(); if(ImGui::RadioButton("CPU", &gbl::mode, CPU_MODE)){toggleMode(CPU_MODE);}
+    ImGui::SameLine(); if(ImGui::RadioButton("GPU", &gbl::mode, GPU_MODE)){toggleMode(GPU_MODE);}
+
     ImGui::Text("Current Window size : %d x %d", sx, sy);
     ImGui::Text("FPS : %d", fps);
     ImGui::End();
