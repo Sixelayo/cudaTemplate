@@ -45,8 +45,9 @@ namespace gbl{
     void (*display)();
 
     int mode = GPU_MODE;
-    bool paused = false;
-    bool needResize = false;
+    bool paused = false;        //stop displaying pixel (prevent unallowed memory access when processing callback)
+    bool needResize = false;    //if pixel buffer needs to be reallocated (prevent too many calls to  free/malloc)
+    bool otherWindow = true;    //display or not other window
 
     int frameAcc = 0; //number of frame since last FPS calculation
     double prevUpdt = 0.0; //time at previous FPS evaluation

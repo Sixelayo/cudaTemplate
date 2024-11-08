@@ -38,6 +38,64 @@ namespace prm{
 
 }//end namespace prm
 
+namespace preset{
+    void center(){
+        prm::scale = 0.0027f;
+        prm::offset =  {0,0};
+    }
+    void gpu_default(){
+        prm::nb_iter = 20;
+        prm::minkowski_order = 2;
+        prm::threshhold = 4;
+    }
+    void foo(){
+        prm::mx = 0.3f;
+        prm::my = 0.5;
+    }
+    void douady(){
+        prm::mx = -0.12f;
+        prm::my = 0.75f;
+    }
+    void branches(){
+        prm::mx = 0.35; 
+        prm::my = 0.35f;
+    }
+}//end namespace prs
+
+
+namespace wdw{
+    void juliaParam(){
+        ImGui::Begin("julia Param");
+        if(ImGui::Button("center")) preset::center();
+        ImGui::SameLine(); if(ImGui::Button("gpu default")) preset::gpu_default();
+
+        float inputWidth = ImGui::CalcTextSize("0.000").x + ImGui::GetStyle().FramePadding.x * 2;
+
+        ImGui::Text("Julia set for z²+c where c =");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(inputWidth); // Set the width for real part
+        ImGui::InputFloat("##real", &prm::mx);
+
+        ImGui::SameLine(); ImGui::Text("+");
+
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
+        ImGui::InputFloat("##imaginary", &prm::my);
+
+        ImGui::InputInt("nb step", &prm::nb_iter);
+        ImGui::InputFloat("threshold", &prm::threshhold, 0.01f, 1.0f, "%.1f");
+        ImGui::InputFloat("minkowski order", &prm::minkowski_order, 0.01f, 1.0f, "%.4f");
+        ImGui::End();
+    }
+    void juliaPreset(){
+        ImGui::Begin("Julia Presets");
+        if(ImGui::Button("foo")) preset::foo();
+        if(ImGui::Button("douady")) preset::douady();
+        if(ImGui::Button("branches")) preset::branches();
+        ImGui::End();
+    }
+
+}//end namespace wdw
 
 namespace cpu{
     void imp_Julia();
@@ -66,6 +124,11 @@ namespace cpu{
 	}
 
     void imp_Julia() {
+        if(gbl::otherWindow) {
+            wdw::juliaParam();
+            wdw::juliaPreset();
+        }
+
 		int i, j;
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
@@ -140,6 +203,11 @@ namespace gpu{
 
     //todo chane name !
 	void imp_Julia(){
+        if(gbl::otherWindow){
+            wdw::juliaParam();
+            wdw::juliaPreset();
+        }
+
 		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
 		int M = 256;
 		
