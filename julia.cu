@@ -40,8 +40,11 @@ namespace prm{
 
 
 namespace cpu{
+    void imp_Julia();
+
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
+        gbl::display = imp_Julia;
     }
     void clean(){
         free(gbl::pixels);
@@ -62,7 +65,7 @@ namespace cpu{
 		return 0;
 	}
 
-    void imp_julia() {
+    void imp_Julia() {
 		int i, j;
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
@@ -82,9 +85,12 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
+    void imp_Julia();
+
     void init(){
         checkCudaErrors( cudaMallocHost((void**) &gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 	    checkCudaErrors( cudaMalloc((void**)&gbl::d_pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+        gbl::display = imp_Julia;
     }
     void clean(){
         checkCudaErrors( cudaFreeHost(gbl::pixels));
@@ -184,6 +190,7 @@ namespace gbl{
                 glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
                 resizePixelsBuffer();
                 needResize = false;
+                paused = false;
             }
         }
 
@@ -245,6 +252,7 @@ namespace cbk{
 
     void window_size(GLFWwindow* window, int width, int height){
         //reszing logic handled in gbl::resizePixelsBuffer() called from gbl::calculate
+        gbl::paused = true;
         gbl::needResize = true;
     }
 
@@ -268,7 +276,7 @@ int main(void){
     glfwMakeContextCurrent(window);
     utl::initImGui(window);
 
-    /* init render specific values*/
+    /* malloc values ...*/
     init();
 
     /* Initialize callback*/
@@ -290,9 +298,8 @@ int main(void){
         
         /* Render here */
         gbl::calculate(window);
-        //use a callback wo param instead ! torm
-        gpu::imp_Julia(); 
-        if(!gbl::needResize) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
+        gbl::display();
+        if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         
         /* end frame for imgui*/
         utl::endframeImGui();

@@ -41,7 +41,11 @@ namespace gbl{
     float4* pixels;
     float4* d_pixels;
 
+    //display callback for drawing pixels
+    void (*display)();
+
     int mode = GPU_MODE;
+    bool paused = false;
     bool needResize = false;
 
     int frameAcc = 0; //number of frame since last FPS calculation
@@ -80,8 +84,10 @@ void newframeImGui(){
 
 
 void toggleMode(int m){
+    gbl::paused = true;
 	clean();
 	init();
+    gbl::paused = false;
 }
 
 void wdw_info(int mode, int sx, int sy, int fps){

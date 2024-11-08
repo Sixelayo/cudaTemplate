@@ -15,8 +15,12 @@ namespace prm{
 
 
 namespace cpu{
+    //forward declaration ...
+    void example(); void imp_Julia();
+
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
+        gbl::display = example;
     }
     void reinit(){
         gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
@@ -52,8 +56,12 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
+    //forward declaration ...
+    void imp_Julia();
+
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
+        gbl::display = cpu::example;
     }
     void reinit(){
         gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
@@ -101,6 +109,7 @@ namespace gbl{
             if(needResize){
                 glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
                 resizePixelsBuffer();
+                paused = false;
                 needResize = false;
             }
         }
@@ -156,6 +165,7 @@ namespace cbk{
     void window_size(GLFWwindow* window, int width, int height){
         //reszing logic handled in gbl::resizePixelsBuffer() called from gbl::calculate
         gbl::needResize = true;
+        gbl::paused = true;
     }
 
 }//end namespace cbk
@@ -200,8 +210,8 @@ int main(void){
         
         /* Render here */
         gbl::calculate(window);
-        cpu::example(); 
-        if(!gbl::needResize) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
+        gbl::display();
+        if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         
         /* end frame for imgui*/
         utl::endframeImGui();
