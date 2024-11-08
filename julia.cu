@@ -1,7 +1,11 @@
 #include "util.hpp"
 #define TITLE "template"
 
-/* use task to compile or run command TODO*/
+/*todo
+<addresse repo git>
+Copier / colé du readme
+
+*/
 
 //complexe numbe stored as a+ib
 class Complex {
@@ -27,8 +31,7 @@ class Complex {
 //various parameters
 namespace prm{
     float scale = 0.003f;
-    //mouse coordinate
-    float mx, my;
+    float mx, my; //mouse coordinate
 
     int nb_iter = 7;
     float minkowski_order = 2;
@@ -40,7 +43,7 @@ namespace prm{
 
 namespace preset{
     void center(){
-        prm::scale = 0.0027f;
+        prm::scale = 0.0035f;
         prm::offset =  {0,0};
     }
     void gpu_default(){
@@ -49,8 +52,8 @@ namespace preset{
         prm::threshhold = 4;
     }
     void foo(){
-        prm::mx = 0.3f;
-        prm::my = 0.5;
+        prm::mx = -0.5251993f;
+        prm::my = -0.5251993f;
     }
     void douady(){
         prm::mx = -0.12f;
@@ -69,18 +72,20 @@ namespace wdw{
         if(ImGui::Button("center")) preset::center();
         ImGui::SameLine(); if(ImGui::Button("gpu default")) preset::gpu_default();
 
-        float inputWidth = ImGui::CalcTextSize("0.000").x + ImGui::GetStyle().FramePadding.x * 2;
+        float inputWidth = ImGui::CalcTextSize("-0.000").x + ImGui::GetStyle().FramePadding.x * 2;
 
         ImGui::Text("Julia set for z²+c where c =");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(inputWidth); // Set the width for real part
         ImGui::InputFloat("##real", &prm::mx);
-
         ImGui::SameLine(); ImGui::Text("+");
-
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
+        ImGui::SameLine(); ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
         ImGui::InputFloat("##imaginary", &prm::my);
+        ImGui::SameLine(); ImGui::Text("i");
+
+        ImGui::Text("Center in complex plane : %.2f+%.2fi",prm::offset.a, prm::offset.b);
+        ImGui::Text("Width : %.2f, height : %.2f", prm::scale * gbl::SCREEN_X, prm::scale * gbl::SCREEN_Y);
+
 
         ImGui::InputInt("nb step", &prm::nb_iter);
         ImGui::InputFloat("threshold", &prm::threshhold, 0.01f, 1.0f, "%.1f");
@@ -165,43 +170,48 @@ namespace gpu{
     }
 
     __global__ void juliaColor(float4* pixels, float sx, float sy, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
-		//deduce i, j from threadIdx, blockIdx ...
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
-		int i = index / SCREENX;
-		int j = index - i * SCREENX;
-		//deduces x,y from i,j...
-		float x = (float)(scale * (j - SCREENX / 2)) + offset.a;
-		float y = (float)(scale * (i - SCREENY / 2)) + offset.b;
-		if (index < SCREENX * SCREENY/*x, y TODO correspondent à un block cohérent*/) {
+		if (index < SCREENX * SCREENY) {
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
+
+		    //deduces x,y (position in complex plane) from i,j...
+		    float x = (float)(scale * (j - SCREENX / 2)) + offset.a;
+		    float y = (float)(scale * (i - SCREENY / 2)) + offset.b;
+
 			float4* pixel = pixels + (i * SCREENX + j);
 			Complex a = Complex(x, y);
 			Complex seed = Complex(sx, sy);
 			pixel->x = 0.0;
 			pixel->y = 0.0;
 			pixel->z = 0.0;
+            //todo need to be optimized with asingle loop !
 			for (int i = 0; i < p+3; i++) {
 				a = a * a + seed;
 				if (minkowski(a, order) > thresh) {
 					pixel->x = 1 - (float)i / p;
+                    break;
 				}
 			}
 			for (int i = 0; i < p-3; i++) {
 				a = a * a + seed;
 				if (minkowski(a, order) > thresh) {
 					pixel->y = 1 - (float)i / (p-3);
+                    break;
 				}
 			}
 			for (int i = 0; i < p - 6; i++) {
 				a = a * a + seed;
 				if (minkowski(a, order) > thresh) {
 					pixel->z = 1 - (float)i / (p-6);
+                    break;
 				}
 			}
 			pixel->w = 1.0;
 		}
 	}
 
-    //todo chane name !
 	void imp_Julia(){
         if(gbl::otherWindow){
             wdw::juliaParam();
@@ -284,10 +294,14 @@ namespace cbk{
         
         //if ImGui doesn't want the event, process it
         if(!io.WantCaptureMouse){
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
             if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
-                double xpos, ypos;
-                glfwGetCursorPos(window, &xpos, &ypos);
                 updt_mpos(xpos, ypos);
+            }
+            if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
+                prm::offset.a += (float)(prm::scale * (xpos - gbl::SCREEN_X / 2));
+		        prm::offset.b += -(float)(prm::scale * (ypos - gbl::SCREEN_Y / 2));
             }
         }
     }
