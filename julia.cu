@@ -225,6 +225,90 @@ namespace gpu{
 		}
 	}
 
+    __global__ void juliaBshipColor(float4* pixels, float sx, float sy, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < SCREENX * SCREENY) {
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
+
+		    //deduces x,y (position in complex plane) from i,j...
+		    float x = (float)(scale * (j - SCREENX / 2)) + offset.a;
+		    float y = (float)(scale * (i - SCREENY / 2)) + offset.b;
+
+			float4* pixel = pixels + (i * SCREENX + j);
+			Complex a = Complex(x, y);
+			Complex seed = Complex(sx, sy);
+			pixel->x = 0.0;
+			pixel->y = 0.0;
+			pixel->z = 0.0;
+            bool br = false; bool bg = false;
+            float norm;
+			for (int i = 0; i < p; i++) {
+				a = a * a + seed;
+                a.a = abs(a.a); //todo what if ont les inverse ?
+                a.b = abs(a.b);
+                norm = minkowski(a, order);
+                if(!br){
+                    if (norm > thresh) {
+                        pixel->x=min(norm*0.6f,1.0f);
+                        br = true;
+                    }
+                }
+                if(!bg){
+                    if (norm > thresh) {
+                        pixel->y = 1 - (float)i / p;
+                        bg = true;
+                    }
+                }
+			}
+            pixel->z=min(norm,1.0f); //coloring interior
+			pixel->w = 1.0;
+		}
+	}
+
+    __global__ void burningshipColor(float4* pixels, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < SCREENX * SCREENY) {
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
+
+		    //deduces x,y (position in complex plane) from i,j...
+		    float x = (float)(scale * (j - SCREENX / 2)) + offset.a;
+		    float y = (float)(scale * (i - SCREENY / 2)) + offset.b;
+
+			float4* pixel = pixels + (i * SCREENX + j);
+			Complex a = Complex(0, 0);
+			Complex seed = Complex(x, y);
+			pixel->x = 0.0;
+			pixel->y = 0.0;
+			pixel->z = 0.0;
+            bool br = false; bool bg = false;
+            float norm;
+			for (int i = 0; i < p; i++) {
+				a = a * a + seed;
+                a.a = abs(a.a);
+                a.b = abs(a.b);
+                norm = minkowski(a, order);
+                if(!br){
+                    if (norm > thresh) {
+                        pixel->x=min(norm*0.6f,1.0f);
+                        br = true;
+                    }
+                }
+                if(!bg){
+                    if (norm > thresh) {
+                        pixel->y = 1 - (float)i / p;
+                        bg = true;
+                    }
+                }
+			}
+            pixel->z=min(norm,1.0f); //coloring interior
+			pixel->w = 1.0;
+		}
+	}
+
 	void imp_Julia(){
         if(gbl::otherWindow){
             wdw::julMandParam();
@@ -255,6 +339,42 @@ namespace gpu{
 		
 		//... nothings to send to gpu
 		mandelbrotColor << <(N + M - 1) / M, M >> > (gbl::d_pixels,
+                prm::nb_iter, prm::minkowski_order, prm::threshhold,
+                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		checkKernelErrors();
+		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
+	}
+
+    void imp_JuliaBship(){
+        if(gbl::otherWindow){
+            wdw::julMandParam();
+            wdw::julMandPreset();
+        }
+
+		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
+		int M = 256;
+		
+		//... nothings to send to gpu
+		juliaBshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, prm::mx, prm::my, 
+                prm::nb_iter, prm::minkowski_order, prm::threshhold,
+                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		checkKernelErrors();
+		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
+	}
+
+    void imp_Burningship(){
+        if(gbl::otherWindow){//todo replace with mandelbrot specific
+            //wdw::mandelbrotParam();
+            //wdw::mandelbrotPreset();
+            wdw::julMandParam();
+            wdw::julMandPreset();
+        }
+
+		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
+		int M = 256;
+		
+		//... nothings to send to gpu
+		burningshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels,
                 prm::nb_iter, prm::minkowski_order, prm::threshhold,
                 gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
 		checkKernelErrors();
@@ -296,8 +416,8 @@ namespace wdw{
             static int selected = 0;
             if (ImGui::Selectable("Julia", selected == 0))      {selected = 0; gbl::display = gpu::imp_Julia;}
             if (ImGui::Selectable("Mandelbrot", selected == 1)) {selected = 1; gbl::display = gpu::imp_Mandelbrot;}
-            if (ImGui::Selectable("Burningship", selected == 2)){selected = 2; gbl::display = gpu::imp_Julia;}
-            if (ImGui::Selectable("Bship julia", selected == 3)){selected = 3; gbl::display = gpu::imp_Julia;}
+            if (ImGui::Selectable("Bship julia", selected == 2)){selected = 2; gbl::display = gpu::imp_JuliaBship;}
+            if (ImGui::Selectable("Burning ship", selected == 3)){selected = 3; gbl::display = gpu::imp_Burningship;}
             
             ImGui::TreePop();
         }
