@@ -7,6 +7,14 @@ Copier / colé du readme
 
 */
 
+//mandatory forward declaration
+namespace wdw{
+    void julMandParam();
+    void julMandPreset();
+}
+
+
+
 //complexe numbe stored as a+ib
 class Complex {
 	public:
@@ -47,13 +55,17 @@ namespace preset{
         prm::offset =  {0,0};
     }
     void gpu_default(){
-        prm::nb_iter = 20;
+        prm::nb_iter = 40;
         prm::minkowski_order = 2;
         prm::threshhold = 4;
     }
-    void foo(){
+    void spiral1(){
         prm::mx = -0.5251993f;
         prm::my = -0.5251993f;
+    }
+    void spiral2(){
+        prm::mx = -0.77146f;
+        prm::my = -0.10119f;
     }
     void douady(){
         prm::mx = -0.12f;
@@ -65,42 +77,6 @@ namespace preset{
     }
 }//end namespace prs
 
-
-namespace wdw{
-    void juliaParam(){
-        ImGui::Begin("julia Param");
-        if(ImGui::Button("center")) preset::center();
-        ImGui::SameLine(); if(ImGui::Button("gpu default")) preset::gpu_default();
-
-        float inputWidth = ImGui::CalcTextSize("-0.000").x + ImGui::GetStyle().FramePadding.x * 2;
-
-        ImGui::Text("Julia set for z²+c where c =");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(inputWidth); // Set the width for real part
-        ImGui::InputFloat("##real", &prm::mx);
-        ImGui::SameLine(); ImGui::Text("+");
-        ImGui::SameLine(); ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
-        ImGui::InputFloat("##imaginary", &prm::my);
-        ImGui::SameLine(); ImGui::Text("i");
-
-        ImGui::Text("Center in complex plane : %.2f+%.2fi",prm::offset.a, prm::offset.b);
-        ImGui::Text("Width : %.2f, height : %.2f", prm::scale * gbl::SCREEN_X, prm::scale * gbl::SCREEN_Y);
-
-
-        ImGui::InputInt("nb step", &prm::nb_iter);
-        ImGui::InputFloat("threshold", &prm::threshhold, 0.01f, 1.0f, "%.1f");
-        ImGui::InputFloat("minkowski order", &prm::minkowski_order, 0.01f, 1.0f, "%.4f");
-        ImGui::End();
-    }
-    void juliaPreset(){
-        ImGui::Begin("Julia Presets");
-        if(ImGui::Button("foo")) preset::foo();
-        if(ImGui::Button("douady")) preset::douady();
-        if(ImGui::Button("branches")) preset::branches();
-        ImGui::End();
-    }
-
-}//end namespace wdw
 
 namespace cpu{
     void imp_Julia();
@@ -130,8 +106,8 @@ namespace cpu{
 
     void imp_Julia() {
         if(gbl::otherWindow) {
-            wdw::juliaParam();
-            wdw::juliaPreset();
+            wdw::julMandParam();
+            wdw::julMandPreset();
         }
 
 		int i, j;
@@ -186,36 +162,73 @@ namespace gpu{
 			pixel->x = 0.0;
 			pixel->y = 0.0;
 			pixel->z = 0.0;
-            //todo need to be optimized with asingle loop !
-			for (int i = 0; i < p+3; i++) {
+            bool br = false; bool bg = false;
+            float norm;
+			for (int i = 0; i < p; i++) {
 				a = a * a + seed;
-				if (minkowski(a, order) > thresh) {
-					pixel->x = 1 - (float)i / p;
-                    break;
-				}
+                norm = minkowski(a, order);
+                if(!br){
+                    if (norm > thresh) {
+                        pixel->x=min(norm*0.6f,1.0f);
+                        br = true;
+                    }
+                }
+                if(!bg){
+                    if (norm > thresh) {
+                        pixel->y = 1 - (float)i / p;
+                        bg = true;
+                    }
+                }
 			}
-			for (int i = 0; i < p-3; i++) {
+            pixel->z=min(norm,1.0f); //coloring interior
+			pixel->w = 1.0;
+		}
+	}
+
+    __global__ void mandelbrotColor(float4* pixels, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < SCREENX * SCREENY) {
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
+
+		    //deduces x,y (position in complex plane) from i,j...
+		    float x = (float)(scale * (j - SCREENX / 2)) + offset.a;
+		    float y = (float)(scale * (i - SCREENY / 2)) + offset.b;
+
+			float4* pixel = pixels + (i * SCREENX + j);
+			Complex a = Complex(0, 0);
+			Complex seed = Complex(x, y);
+			pixel->x = 0.0;
+			pixel->y = 0.0;
+			pixel->z = 0.0;
+            bool br = false; bool bg = false;
+            float norm;
+			for (int i = 0; i < p; i++) {
 				a = a * a + seed;
-				if (minkowski(a, order) > thresh) {
-					pixel->y = 1 - (float)i / (p-3);
-                    break;
-				}
+                norm = minkowski(a, order);
+                if(!br){
+                    if (norm > thresh) {
+                        pixel->x=min(norm*0.6f,1.0f);
+                        br = true;
+                    }
+                }
+                if(!bg){
+                    if (norm > thresh) {
+                        pixel->y = 1 - (float)i / p;
+                        bg = true;
+                    }
+                }
 			}
-			for (int i = 0; i < p - 6; i++) {
-				a = a * a + seed;
-				if (minkowski(a, order) > thresh) {
-					pixel->z = 1 - (float)i / (p-6);
-                    break;
-				}
-			}
+            pixel->z=min(norm,1.0f); //coloring interior
 			pixel->w = 1.0;
 		}
 	}
 
 	void imp_Julia(){
         if(gbl::otherWindow){
-            wdw::juliaParam();
-            wdw::juliaPreset();
+            wdw::julMandParam();
+            wdw::julMandPreset();
         }
 
 		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
@@ -228,8 +241,81 @@ namespace gpu{
 		checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
 	}
+
+    void imp_Mandelbrot(){
+        if(gbl::otherWindow){//todo replace with mandelbrot specific
+            //wdw::mandelbrotParam();
+            //wdw::mandelbrotPreset();
+            wdw::julMandParam();
+            wdw::julMandPreset();
+        }
+
+		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
+		int M = 256;
+		
+		//... nothings to send to gpu
+		mandelbrotColor << <(N + M - 1) / M, M >> > (gbl::d_pixels,
+                prm::nb_iter, prm::minkowski_order, prm::threshhold,
+                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		checkKernelErrors();
+		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
+	}
+
+
     
 }//end namespace gpu
+
+namespace wdw{
+    void julMandParam(){
+        ImGui::Begin("Mandelbrot & Julia Param");
+        if(ImGui::Button("center")) preset::center();
+        ImGui::SameLine(); if(ImGui::Button("gpu default")) preset::gpu_default();
+
+        float inputWidth = ImGui::CalcTextSize("-0.000").x + ImGui::GetStyle().FramePadding.x * 2;
+
+        ImGui::Text("Julia set for z²+c where c =");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(inputWidth); // Set the width for real part
+        ImGui::InputFloat("##real", &prm::mx);
+        ImGui::SameLine(); ImGui::Text("+");
+        ImGui::SameLine(); ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
+        ImGui::InputFloat("##imaginary", &prm::my);
+        ImGui::SameLine(); ImGui::Text("i");
+
+        ImGui::Text("Center in complex plane : %.2f+%.2fi",prm::offset.a, prm::offset.b);
+        ImGui::Text("Width : %.2f, height : %.2f", prm::scale * gbl::SCREEN_X, prm::scale * gbl::SCREEN_Y);
+
+
+        ImGui::InputInt("nb step", &prm::nb_iter);
+        ImGui::InputFloat("threshold", &prm::threshhold, 0.01f, 1.0f, "%.1f");
+        ImGui::InputFloat("minkowski order", &prm::minkowski_order, 0.01f, 1.0f, "%.4f");
+
+
+        if (ImGui::TreeNode("Single-Select"))
+        {
+            static int selected = 0;
+            if (ImGui::Selectable("Julia", selected == 0))      {selected = 0; gbl::display = gpu::imp_Julia;}
+            if (ImGui::Selectable("Mandelbrot", selected == 1)) {selected = 1; gbl::display = gpu::imp_Mandelbrot;}
+            if (ImGui::Selectable("Burningship", selected == 2)){selected = 2; gbl::display = gpu::imp_Julia;}
+            if (ImGui::Selectable("Bship julia", selected == 3)){selected = 3; gbl::display = gpu::imp_Julia;}
+            
+            ImGui::TreePop();
+        }
+
+        ImGui::End();
+    }
+    void julMandPreset(){
+        ImGui::Begin("Julia Presets");
+        if(ImGui::Button("spiral1")) preset::spiral1();
+        if(ImGui::Button("spiral2")) preset::spiral2();
+        if(ImGui::Button("douady")) preset::douady();
+        if(ImGui::Button("branches")) preset::branches();
+        ImGui::End();
+    }
+
+}//end namespace wdw
+
+
 
 void clean(){
 	switch (gbl::mode){
@@ -283,8 +369,8 @@ namespace cbk{
     */
 
     inline void updt_mpos(double xpos, double ypos){
-        prm::mx = (float)(prm::scale*(xpos - gbl::SCREEN_X / 2));
-        prm::my = -(float)(prm::scale*(ypos - gbl::SCREEN_Y / 2));
+        prm::mx = prm::offset.a + (float)(prm::scale*(xpos - gbl::SCREEN_X / 2));
+        prm::my = prm::offset.b - (float)(prm::scale*(ypos - gbl::SCREEN_Y / 2));
     }
 
     void mouse_button(GLFWwindow* window, int button, int action, int mods){
@@ -376,7 +462,7 @@ int main(void){
 
         /* Interface*/
         utl::newframeImGui();
-        utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+        if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
         
         /* Render here */
         gbl::calculate(window);

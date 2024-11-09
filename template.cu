@@ -206,7 +206,7 @@ int main(void){
 
         /* Interface*/
         utl::newframeImGui();
-        utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+        if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
         
         /* Render here */
         gbl::calculate(window);
