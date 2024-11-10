@@ -3,15 +3,12 @@
 
 /* use task to compile or run command TODO*/
 
-
-
-namespace prm{
-
-    float scale = 0.003f;
-    //mouse coordinate
+struct Param {
+    float scale;
     float mx, my;
-
-} //end namespace prm
+};
+Param h_params;
+// You can send params to GPU __constant__ memory if you need to have per-frame constant parameter common to every pixel instead of passing them as function argument
 
 
 namespace cpu{
@@ -33,15 +30,15 @@ namespace cpu{
         int i, j;
         for (i = 0; i<gbl::SCREEN_Y; i++){
             for (j = 0; j<gbl::SCREEN_X; j++){
-                float x = (float)(prm::scale*(j - gbl::SCREEN_X / 2));
-                float y = (float)(prm::scale*(i - gbl::SCREEN_Y / 2));
+                float x = (float)(h_params.scale*(j - gbl::SCREEN_X / 2));
+                float y = (float)(h_params.scale*(i - gbl::SCREEN_Y / 2));
                 float4* p = gbl::pixels + (i*gbl::SCREEN_X + j);
                 // default: black
                 p->x = 0.0f;
                 p->y = 0.0f;
                 p->z = 0.0f;
                 p->w = 1.0f;
-                if (sqrt((x - prm::mx)*(x - prm::mx) + (y - prm::my)*(y - prm::my))<0.01)
+                if (sqrt((x - h_params.mx)*(x - h_params.mx) + (y - h_params.my)*(y - h_params.my))<0.01)
                     p->x = 1.0f;
                 else if ((i == gbl::SCREEN_Y / 2) || (j == gbl::SCREEN_X / 2))
                 {
@@ -144,8 +141,8 @@ namespace cbk{
         if(!io.WantCaptureMouse){
             int leftState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
             if(leftState == GLFW_PRESS){
-                prm::mx = (float)(prm::scale*(xpos - gbl::SCREEN_X / 2));
-                prm::my = -(float)(prm::scale*(ypos - gbl::SCREEN_Y / 2));
+                h_params.mx = (float)(h_params.scale*(xpos - gbl::SCREEN_X / 2));
+                h_params.my = -(float)(h_params.scale*(ypos - gbl::SCREEN_Y / 2));
             }
         }
     }
@@ -157,8 +154,8 @@ namespace cbk{
         
         //if ImGui doesn't want the event, process it
         if(!io.WantCaptureMouse){
-            if (yoffset >0) prm::scale /= 1.05f;
-	        else prm::scale *= 1.05f;
+            if (yoffset >0) h_params.scale /= 1.05f;
+	        else h_params.scale *= 1.05f;
         }
     }
 
@@ -188,9 +185,13 @@ int main(void){
     glfwMakeContextCurrent(window);
     utl::initImGui(window);
 
-    /* init render specific values*/
+    /* malloc render specific arrays... */
     init();
-
+    {/* set up parameter*/
+        h_params.scale = 0.003f;
+        h_params.mx = 0.0f;
+        h_params.my = 0.0f;
+    }
     /* Initialize callback*/
     //glfwSetMouseButtonCallback(window, cbk::mouse_button);
     glfwSetCursorPosCallback(window, cbk::cursor_position);

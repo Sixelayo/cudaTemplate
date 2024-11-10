@@ -20,6 +20,7 @@ class Complex {
 	public:
 		float a;
 		float b;
+		__device__ __host__ Complex(){}
 		__device__ __host__ Complex(float a, float b) : a(a), b(b){}
 
 		__device__ __host__ Complex operator+(const Complex& other) const {
@@ -36,44 +37,42 @@ class Complex {
 	}
 
 
-//various parameters
-namespace prm{
-    float scale = 0.003f;
-    float mx, my; //mouse coordinate
-
-    int nb_iter = 7;
-    float minkowski_order = 2;
-    float threshhold = 4;
-
-    Complex offset{0,0};
-
-}//end namespace prm
+struct Param {
+    float scale;
+    float mx, my;
+    int nb_iter;
+    float minkowski_order;
+    float threshold;
+    Complex offset;
+};
+Param h_params;
+__constant__ Param d_params;
 
 namespace preset{
     void center(){
-        prm::scale = 0.0035f;
-        prm::offset =  {0,0};
+        h_params.scale = 0.0035f;
+        h_params.offset =  {0,0};
     }
     void gpu_default(){
-        prm::nb_iter = 40;
-        prm::minkowski_order = 2;
-        prm::threshhold = 4;
+        h_params.nb_iter = 40;
+        h_params.minkowski_order = 2;
+        h_params.threshold = 4;
     }
     void spiral1(){
-        prm::mx = -0.5251993f;
-        prm::my = -0.5251993f;
+        h_params.mx = -0.5251993f;
+        h_params.my = -0.5251993f;
     }
     void spiral2(){
-        prm::mx = -0.77146f;
-        prm::my = -0.10119f;
+        h_params.mx = -0.77146f;
+        h_params.my = -0.10119f;
     }
     void douady(){
-        prm::mx = -0.12f;
-        prm::my = 0.75f;
+        h_params.mx = -0.12f;
+        h_params.my = 0.75f;
     }
     void branches(){
-        prm::mx = 0.35; 
-        prm::my = 0.35f;
+        h_params.mx = 0.35; 
+        h_params.my = 0.35f;
     }
 }//end namespace prs
 
@@ -114,13 +113,13 @@ namespace cpu{
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
 			{
-				float x = (float)(prm::scale * (j - gbl::SCREEN_X / 2));
-				float y = (float)(prm::scale * (i - gbl::SCREEN_Y / 2));
+				float x = (float)(h_params.scale * (j - gbl::SCREEN_X / 2));
+				float y = (float)(h_params.scale * (i - gbl::SCREEN_Y / 2));
 				float4* p = gbl::pixels + (i * gbl::SCREEN_X + j);
 				// default: black
 				p->x = 0.0f;
 				p->y = 0.0f;
-				p->z = cpu::juliaColor(x - prm::offset.a, y - prm::offset.b, prm::mx  , prm::my, prm::nb_iter, prm::minkowski_order, prm::minkowski_order);
+				p->z = cpu::juliaColor(x - h_params.offset.a, y - h_params.offset.b, h_params.mx  , h_params.my, h_params.nb_iter, h_params.minkowski_order, h_params.minkowski_order);
 				p->w = 1.0f;
 
 			}
@@ -145,9 +144,23 @@ namespace gpu{
         init();
     }
 
-    __global__ void juliaColor(float4* pixels, float sx, float sy, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+    void setDeviceParameters(const Param& params) {
+        checkCudaErrors( cudaMemcpyToSymbol(d_params, &params, sizeof(Param)) );
+    }
+
+    __global__ void juliaColor(float4* pixels, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+            float scale = t_params.scale;
+            Complex offset = t_params.offset;
+            float sx = t_params.mx;
+            float sy = t_params.my;
+            int nb_iter = t_params.nb_iter;
+            float order = t_params.minkowski_order;
+            float thresh = t_params.threshold;
+
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
@@ -164,7 +177,7 @@ namespace gpu{
 			pixel->z = 0.0;
             bool br = false; bool bg = false;
             float norm;
-			for (int i = 0; i < p; i++) {
+			for (int i = 0; i < nb_iter; i++) {
 				a = a * a + seed;
                 norm = minkowski(a, order);
                 if(!br){
@@ -175,7 +188,7 @@ namespace gpu{
                 }
                 if(!bg){
                     if (norm > thresh) {
-                        pixel->y = 1 - (float)i / p;
+                        pixel->y = 1 - (float)i / nb_iter;
                         bg = true;
                     }
                 }
@@ -185,9 +198,17 @@ namespace gpu{
 		}
 	}
 
-    __global__ void mandelbrotColor(float4* pixels, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+    __global__ void mandelbrotColor(float4* pixels, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+            float scale = t_params.scale;
+            Complex offset = t_params.offset;
+            int nb_iter = t_params.nb_iter;
+            float order = t_params.minkowski_order;
+            float thresh = t_params.threshold;
+
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
@@ -204,7 +225,7 @@ namespace gpu{
 			pixel->z = 0.0;
             bool br = false; bool bg = false;
             float norm;
-			for (int i = 0; i < p; i++) {
+			for (int i = 0; i < nb_iter; i++) {
 				a = a * a + seed;
                 norm = minkowski(a, order);
                 if(!br){
@@ -215,7 +236,7 @@ namespace gpu{
                 }
                 if(!bg){
                     if (norm > thresh) {
-                        pixel->y = 1 - (float)i / p;
+                        pixel->y = 1 - (float)i / nb_iter;
                         bg = true;
                     }
                 }
@@ -225,9 +246,20 @@ namespace gpu{
 		}
 	}
 
-    __global__ void juliaBshipColor(float4* pixels, float sx, float sy, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+    __global__ void juliaBshipColor(float4* pixels, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+            float scale = t_params.scale;
+            Complex offset = t_params.offset;
+            float sx = t_params.mx;
+            float sy = t_params.my;
+            int nb_iter = t_params.nb_iter;
+            float order = t_params.minkowski_order;
+            float thresh = t_params.threshold;
+
+
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
@@ -244,7 +276,7 @@ namespace gpu{
 			pixel->z = 0.0;
             bool br = false; bool bg = false;
             float norm;
-			for (int i = 0; i < p; i++) {
+			for (int i = 0; i < nb_iter; i++) {
 				a = a * a + seed;
                 a.a = abs(a.a); //todo what if ont les inverse ?
                 a.b = abs(a.b);
@@ -257,7 +289,7 @@ namespace gpu{
                 }
                 if(!bg){
                     if (norm > thresh) {
-                        pixel->y = 1 - (float)i / p;
+                        pixel->y = 1 - (float)i / nb_iter;
                         bg = true;
                     }
                 }
@@ -267,9 +299,17 @@ namespace gpu{
 		}
 	}
 
-    __global__ void burningshipColor(float4* pixels, int p, float order, float thresh, int SCREENX, int SCREENY, float scale, Complex offset) {
+    __global__ void burningshipColor(float4* pixels, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+            float scale = t_params.scale;
+            Complex offset = t_params.offset;
+            int nb_iter = t_params.nb_iter;
+            float order = t_params.minkowski_order;
+            float thresh = t_params.threshold;
+
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
@@ -286,7 +326,7 @@ namespace gpu{
 			pixel->z = 0.0;
             bool br = false; bool bg = false;
             float norm;
-			for (int i = 0; i < p; i++) {
+			for (int i = 0; i < nb_iter; i++) {
 				a = a * a + seed;
                 a.a = abs(a.a);
                 a.b = abs(a.b);
@@ -299,7 +339,7 @@ namespace gpu{
                 }
                 if(!bg){
                     if (norm > thresh) {
-                        pixel->y = 1 - (float)i / p;
+                        pixel->y = 1 - (float)i / nb_iter;
                         bg = true;
                     }
                 }
@@ -319,9 +359,10 @@ namespace gpu{
 		int M = 256;
 		
 		//... nothings to send to gpu
-		juliaColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, prm::mx, prm::my, 
-                prm::nb_iter, prm::minkowski_order, prm::threshhold,
-                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		// juliaColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, h_params.mx, h_params.my, 
+        //         h_params.nb_iter, h_params.minkowski_order, h_params.threshold,
+        //         gbl::SCREEN_X, gbl::SCREEN_Y, h_params.scale, h_params.offset); 
+		juliaColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y); 
 		checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
 	}
@@ -338,9 +379,7 @@ namespace gpu{
 		int M = 256;
 		
 		//... nothings to send to gpu
-		mandelbrotColor << <(N + M - 1) / M, M >> > (gbl::d_pixels,
-                prm::nb_iter, prm::minkowski_order, prm::threshhold,
-                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		mandelbrotColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y); 
 		checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
 	}
@@ -355,9 +394,7 @@ namespace gpu{
 		int M = 256;
 		
 		//... nothings to send to gpu
-		juliaBshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, prm::mx, prm::my, 
-                prm::nb_iter, prm::minkowski_order, prm::threshhold,
-                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		juliaBshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y); 
 		checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
 	}
@@ -374,9 +411,7 @@ namespace gpu{
 		int M = 256;
 		
 		//... nothings to send to gpu
-		burningshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels,
-                prm::nb_iter, prm::minkowski_order, prm::threshhold,
-                gbl::SCREEN_X, gbl::SCREEN_Y, prm::scale, prm::offset); 
+		burningshipColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y); 
 		checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
 	}
@@ -396,28 +431,45 @@ namespace wdw{
         ImGui::Text("Julia set for z²+c where c =");
         ImGui::SameLine();
         ImGui::SetNextItemWidth(inputWidth); // Set the width for real part
-        ImGui::InputFloat("##real", &prm::mx);
+        ImGui::InputFloat("##real", &h_params.mx);
         ImGui::SameLine(); ImGui::Text("+");
         ImGui::SameLine(); ImGui::SetNextItemWidth(inputWidth); // Set the width for imaginary part
-        ImGui::InputFloat("##imaginary", &prm::my);
+        ImGui::InputFloat("##imaginary", &h_params.my);
         ImGui::SameLine(); ImGui::Text("i");
 
-        ImGui::Text("Center in complex plane : %.2f+%.2fi",prm::offset.a, prm::offset.b);
-        ImGui::Text("Width : %.2f, height : %.2f", prm::scale * gbl::SCREEN_X, prm::scale * gbl::SCREEN_Y);
+        ImGui::Text("Center in complex plane : %.2f+%.2fi",h_params.offset.a, h_params.offset.b);
+        ImGui::Text("Width : %.2f, height : %.2f", h_params.scale * gbl::SCREEN_X, h_params.scale * gbl::SCREEN_Y);
 
 
-        ImGui::InputInt("nb step", &prm::nb_iter);
-        ImGui::InputFloat("threshold", &prm::threshhold, 0.01f, 1.0f, "%.1f");
-        ImGui::InputFloat("minkowski order", &prm::minkowski_order, 0.01f, 1.0f, "%.4f");
+        ImGui::InputInt("nb step", &h_params.nb_iter);
+        ImGui::InputFloat("threshold", &h_params.threshold, 0.01f, 1.0f, "%.1f");
+        ImGui::InputFloat("minkowski order", &h_params.minkowski_order, 0.01f, 1.0f, "%.4f");
 
 
-        if (ImGui::TreeNode("Single-Select"))
+        if (ImGui::TreeNode("Fractal-type"))
         {
             static int selected = 0;
             if (ImGui::Selectable("Julia", selected == 0))      {selected = 0; gbl::display = gpu::imp_Julia;}
             if (ImGui::Selectable("Mandelbrot", selected == 1)) {selected = 1; gbl::display = gpu::imp_Mandelbrot;}
             if (ImGui::Selectable("Bship julia", selected == 2)){selected = 2; gbl::display = gpu::imp_JuliaBship;}
             if (ImGui::Selectable("Burning ship", selected == 3)){selected = 3; gbl::display = gpu::imp_Burningship;}
+            
+            ImGui::TreePop();
+        }
+
+        if (ImGui::TreeNode("Color management"))
+        {
+            //move to param
+            static float in_fac = 1.0f;
+            static float out_fac = 1.0f;
+            static ImVec4 color_step(0.23f, 1.0f, 1.0f, 1.0f);
+            static ImVec4 color_easeIn(0.f, 0.0f, 1.0f, 1.0f);
+            static ImVec4 color_easeOut(0.23f, 1.0f, 1.0f, 1.0f);
+            ImGui::ColorEdit4("Step color", (float*)&color_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("ease in color", (float*)&color_easeIn, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("ease out color", (float*)&color_easeOut, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
+            ImGui::DragFloat("int easing facor", &in_fac, 0.005f,0.1f,2.0f);
+            ImGui::DragFloat("out easing factor", &out_fac, 0.005f,0.1f,2.0f);
             
             ImGui::TreePop();
         }
@@ -489,8 +541,8 @@ namespace cbk{
     */
 
     inline void updt_mpos(double xpos, double ypos){
-        prm::mx = prm::offset.a + (float)(prm::scale*(xpos - gbl::SCREEN_X / 2));
-        prm::my = prm::offset.b - (float)(prm::scale*(ypos - gbl::SCREEN_Y / 2));
+        h_params.mx = h_params.offset.a + (float)(h_params.scale*(xpos - gbl::SCREEN_X / 2));
+        h_params.my = h_params.offset.b - (float)(h_params.scale*(ypos - gbl::SCREEN_Y / 2));
     }
 
     void mouse_button(GLFWwindow* window, int button, int action, int mods){
@@ -506,8 +558,8 @@ namespace cbk{
                 updt_mpos(xpos, ypos);
             }
             if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
-                prm::offset.a += (float)(prm::scale * (xpos - gbl::SCREEN_X / 2));
-		        prm::offset.b += -(float)(prm::scale * (ypos - gbl::SCREEN_Y / 2));
+                h_params.offset.a += (float)(h_params.scale * (xpos - gbl::SCREEN_X / 2));
+		        h_params.offset.b += -(float)(h_params.scale * (ypos - gbl::SCREEN_Y / 2));
             }
         }
     }
@@ -533,8 +585,8 @@ namespace cbk{
         
         //if ImGui doesn't want the event, process it
         if(!io.WantCaptureMouse){
-            if (yoffset >0) prm::scale /= 1.05f;
-	        else prm::scale *= 1.05f;
+            if (yoffset >0) h_params.scale /= 1.05f;
+	        else h_params.scale *= 1.05f;
         }
     }
 
@@ -566,6 +618,15 @@ int main(void){
 
     /* malloc values ...*/
     init();
+    {/* set up parameter*/
+        h_params.scale = 0.003f;
+        h_params.mx = 0.0f;
+        h_params.my = 0.0f;
+        h_params.nb_iter = 7;
+        h_params.minkowski_order = 2.0f;
+        h_params.threshold = 4.0f;
+        h_params.offset = Complex(0.0f, 0.0f);
+    }
 
     /* Initialize callback*/
     glfwSetMouseButtonCallback(window, cbk::mouse_button);
@@ -586,6 +647,7 @@ int main(void){
         
         /* Render here */
         gbl::calculate(window);
+        gpu::setDeviceParameters(h_params);
         gbl::display();
         if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         

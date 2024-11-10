@@ -52,7 +52,14 @@ If you're using VSCode You can simply run the provided task (`ctrl+shift+p > Run
 
 It will simply run the following command :
 ```shell
-nvcc -Xcompiler="/MT" foo.cpp ./imgui/*.cpp -o foo.exe  -I./include -L./lib -lglfw3_mt -lopengl32 -luser32 -lgdi32 -lshell32
+nvcc template.cu ./imgui/*.cpp -o ./exe/template.exe -I./include/ -L./lib/ -lglfw3_mt -lopengl32 -luser32 -lgdi32 -lshell32
+```
+The wildcard `*.cpp` might not expand, in that case you'll need to use a script or list file individually
+```shell
+nvcc template.cu (Get-ChildItem -Path .\\imgui\\ -Filter *.cpp | ForEach-Object { $_.FullName }) -o ./exe/template.exe -I./include/ -L./lib/ -lglfw3_mt -lopengl32 -luser32 -lgdi32 -lshell32
+```
+```shell
+nvcc template.cu ./imgui/imgui_draw.cpp ./imgui/imgui_impl_glfw.cpp ./imgui/imgui_impl_opengl3.cpp ./imgui/imgui_tables.cpp ./imgui/imgui_widgets.cpp ./imgui/imgui.cpp -o ./exe/template.exe -I./include/ -L./lib/ -lglfw3_mt -lopengl32 -luser32 -lgdi32 -lshell32
 ```
 
 ## Static vs dynamic compilation for GLFW
