@@ -17,24 +17,32 @@ namespace wdw{
 
 //complexe numbe stored as a+ib
 class Complex {
-	public:
-		float a;
-		float b;
-		__device__ __host__ Complex(){}
-		__device__ __host__ Complex(float a, float b) : a(a), b(b){}
+public:
+    float a;
+    float b;
+    __device__ __host__ Complex(){}
+    __device__ __host__ Complex(float a, float b) : a(a), b(b){}
 
-		__device__ __host__ Complex operator+(const Complex& other) const {
-			return Complex(a + other.a, b + other.b);
-		}
-		__device__ __host__ Complex operator*(const Complex& other) const {
-			return Complex(a * other.a - b * other.b, a * other.b + b * other.a);
-		}
+    __device__ __host__ Complex operator+(const Complex& other) const {
+        return Complex(a + other.a, b + other.b);
+    }
+    __device__ __host__ Complex operator*(const Complex& other) const {
+        return Complex(a * other.a - b * other.b, a * other.b + b * other.a);
+    }
 
-	};
+};
+struct MyCol{ //used for passing color to gpu
+    float x, y, z, w;
+    __device__ __host__ MyCol(){}
+    __device__ __host__ MyCol(float x, float y, float z, float w) : x(x), y(y), z(z), w(w){}
+    __device__ __host__ MyCol(float* c) : x(c[0]), y(c[1]), z(c[2]), w(c[3]){}
+    __device__ __host__ MyCol(const MyCol& c) : x(c.x), y(c.y), z(c.z), w(c.w){}
+};
 
-	__device__ __host__ float minkowski(Complex c, float order) {
-		return pow((pow(c.a, order) + pow(c.b, order)), 1.0f / order);
-	}
+
+__device__ __host__ float minkowski(Complex c, float order) {
+    return pow((pow(c.a, order) + pow(c.b, order)), 1.0f / order);
+}
 
 
 struct Param {
@@ -46,6 +54,9 @@ struct Param {
     Complex offset;
     float easing_fac_in;
     float easing_fac_out;
+    MyCol color_step;
+    MyCol color_easeIn;
+    MyCol color_easeOut;
 };
 Param h_params;
 __constant__ Param d_params;
@@ -164,6 +175,9 @@ namespace gpu{
             float thresh = t_params.threshold;
             float fac_in = t_params.easing_fac_in;
             float fac_out = t_params.easing_fac_out;
+            MyCol col1 = MyCol(t_params.color_easeIn);
+            MyCol col2 = MyCol(t_params.color_easeOut);
+            MyCol col3 = MyCol(t_params.color_step);
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
@@ -176,26 +190,24 @@ namespace gpu{
 			float4* pixel = pixels + (i * SCREENX + j);
 			Complex a = Complex(x, y);
 			Complex seed = Complex(sx, sy);
-			pixel->x = 0.0;
-			pixel->y = 0.0;
-			pixel->z = 0.0;
-            float norm;
-			for (int i = 0; i < nb_iter; i++) {
+			float escFac, outNormFac; //color fac if point escape
+            float inNormFac=0.0f;   //color fac if point doesn't escape
+            float norm; int k=0;
+			for (; k < nb_iter; k++) {
 				a = a * a + seed;
                 norm = minkowski(a, order);
                 
-                if(i == 10){
-                    pixel->z = min((norm -thresh)* fac_in, 1.0f);   // Blue based on early norm. Will be override if escape
-                }
-
                 if (norm > thresh) {                    
-                    pixel->x = 1.0f - i / nb_iter;                      // red based on escape time
-                    pixel->y = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
-                    pixel->z = 0.0f;
-                    
+                    escFac = 1.0f - (float)k / nb_iter;                      // red based on escape time
+                    outNormFac = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
                     break;  // stop iterating after escape
                 }
 			}
+            if(k==nb_iter) inNormFac = min(norm* fac_in, 1.0f);
+            //if you want to hanlde alpha blend, multiply each fac*col by col.w
+            pixel->x = min(inNormFac * col1.x + outNormFac * col2.x + escFac * col3.x,1.0f);
+            pixel->y = min(inNormFac * col1.y + outNormFac * col2.y + escFac * col3.y,1.0f); 
+            pixel->z = min(inNormFac * col1.z + outNormFac * col2.z + escFac * col3.z,1.0f); 
 			pixel->w = 1.0;
 		}
 	}
@@ -210,6 +222,11 @@ namespace gpu{
             int nb_iter = t_params.nb_iter;
             float order = t_params.minkowski_order;
             float thresh = t_params.threshold;
+            float fac_in = t_params.easing_fac_in;
+            float fac_out = t_params.easing_fac_out;
+            MyCol col1 = MyCol(t_params.color_easeIn);
+            MyCol col2 = MyCol(t_params.color_easeOut);
+            MyCol col3 = MyCol(t_params.color_step);
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
@@ -222,28 +239,24 @@ namespace gpu{
 			float4* pixel = pixels + (i * SCREENX + j);
 			Complex a = Complex(0, 0);
 			Complex seed = Complex(x, y);
-			pixel->x = 0.0;
-			pixel->y = 0.0;
-			pixel->z = 0.0;
-            bool br = false; bool bg = false;
-            float norm;
-			for (int i = 0; i < nb_iter; i++) {
+			float escFac, outNormFac; //color fac if point escape
+            float inNormFac=0.0f;   //color fac if point doesn't escape
+            float norm; int k=0;
+			for (; k < nb_iter; k++) {
 				a = a * a + seed;
                 norm = minkowski(a, order);
-                if(!br){
-                    if (norm > thresh) {
-                        pixel->x=min(norm*0.6f,1.0f);
-                        br = true;
-                    }
-                }
-                if(!bg){
-                    if (norm > thresh) {
-                        pixel->y = 1 - (float)i / nb_iter;
-                        bg = true;
-                    }
+                
+                if (norm > thresh) {                    
+                    escFac = 1.0f - (float)k / nb_iter;                      // red based on escape time
+                    outNormFac = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
+                    break;  // stop iterating after escape
                 }
 			}
-            pixel->z=min(norm,1.0f); //coloring interior
+            if(k==nb_iter) inNormFac = min(norm* fac_in, 1.0f);
+            //if you want to hanlde alpha blend, multiply each fac*col by col.w
+            pixel->x = min(inNormFac * col1.x + outNormFac * col2.x + escFac * col3.x,1.0f);
+            pixel->y = min(inNormFac * col1.y + outNormFac * col2.y + escFac * col3.y,1.0f); 
+            pixel->z = min(inNormFac * col1.z + outNormFac * col2.z + escFac * col3.z,1.0f); 
 			pixel->w = 1.0;
 		}
 	}
@@ -260,7 +273,11 @@ namespace gpu{
             int nb_iter = t_params.nb_iter;
             float order = t_params.minkowski_order;
             float thresh = t_params.threshold;
-
+            float fac_in = t_params.easing_fac_in;
+            float fac_out = t_params.easing_fac_out;
+            MyCol col1 = MyCol(t_params.color_easeIn);
+            MyCol col2 = MyCol(t_params.color_easeOut);
+            MyCol col3 = MyCol(t_params.color_step);
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
@@ -273,30 +290,25 @@ namespace gpu{
 			float4* pixel = pixels + (i * SCREENX + j);
 			Complex a = Complex(x, y);
 			Complex seed = Complex(sx, sy);
-			pixel->x = 0.0;
-			pixel->y = 0.0;
-			pixel->z = 0.0;
-            bool br = false; bool bg = false;
-            float norm;
-			for (int i = 0; i < nb_iter; i++) {
+			float escFac, outNormFac; //color fac if point escape
+            float inNormFac=0.0f;   //color fac if point doesn't escape
+            float norm; int k=0;
+			for (; k < nb_iter; k++) {
 				a = a * a + seed;
-                a.a = abs(a.a); //todo what if ont les inverse ?
-                a.b = abs(a.b);
+                a.a = abs(a.a); a.b= abs(a.b);
                 norm = minkowski(a, order);
-                if(!br){
-                    if (norm > thresh) {
-                        pixel->x=min(norm*0.6f,1.0f);
-                        br = true;
-                    }
-                }
-                if(!bg){
-                    if (norm > thresh) {
-                        pixel->y = 1 - (float)i / nb_iter;
-                        bg = true;
-                    }
+                
+                if (norm > thresh) {                    
+                    escFac = 1.0f - (float)k / nb_iter;                      // red based on escape time
+                    outNormFac = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
+                    break;  // stop iterating after escape
                 }
 			}
-            pixel->z=min(norm,1.0f); //coloring interior
+            if(k==nb_iter) inNormFac = min(norm* fac_in, 1.0f);
+            //if you want to hanlde alpha blend, multiply each fac*col by col.w
+            pixel->x = min(inNormFac * col1.x + outNormFac * col2.x + escFac * col3.x,1.0f);
+            pixel->y = min(inNormFac * col1.y + outNormFac * col2.y + escFac * col3.y,1.0f); 
+            pixel->z = min(inNormFac * col1.z + outNormFac * col2.z + escFac * col3.z,1.0f); 
 			pixel->w = 1.0;
 		}
 	}
@@ -311,6 +323,11 @@ namespace gpu{
             int nb_iter = t_params.nb_iter;
             float order = t_params.minkowski_order;
             float thresh = t_params.threshold;
+            float fac_in = t_params.easing_fac_in;
+            float fac_out = t_params.easing_fac_out;
+            MyCol col1 = MyCol(t_params.color_easeIn);
+            MyCol col2 = MyCol(t_params.color_easeOut);
+            MyCol col3 = MyCol(t_params.color_step);
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
@@ -323,30 +340,25 @@ namespace gpu{
 			float4* pixel = pixels + (i * SCREENX + j);
 			Complex a = Complex(0, 0);
 			Complex seed = Complex(x, y);
-			pixel->x = 0.0;
-			pixel->y = 0.0;
-			pixel->z = 0.0;
-            bool br = false; bool bg = false;
-            float norm;
-			for (int i = 0; i < nb_iter; i++) {
+			float escFac, outNormFac; //color fac if point escape
+            float inNormFac=0.0f;   //color fac if point doesn't escape
+            float norm; int k=0;
+			for (; k < nb_iter; k++) {
 				a = a * a + seed;
-                a.a = abs(a.a);
-                a.b = abs(a.b);
+                a.a = abs(a.a); a.b= abs(a.b);
                 norm = minkowski(a, order);
-                if(!br){
-                    if (norm > thresh) {
-                        pixel->x=min(norm*0.6f,1.0f);
-                        br = true;
-                    }
-                }
-                if(!bg){
-                    if (norm > thresh) {
-                        pixel->y = 1 - (float)i / nb_iter;
-                        bg = true;
-                    }
+                
+                if (norm > thresh) {                    
+                    escFac = 1.0f - (float)k / nb_iter;                      // red based on escape time
+                    outNormFac = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
+                    break;  // stop iterating after escape
                 }
 			}
-            pixel->z=min(norm,1.0f); //coloring interior
+            if(k==nb_iter) inNormFac = min(norm* fac_in, 1.0f);
+            //if you want to hanlde alpha blend, multiply each fac*col by col.w
+            pixel->x = min(inNormFac * col1.x + outNormFac * col2.x + escFac * col3.x,1.0f);
+            pixel->y = min(inNormFac * col1.y + outNormFac * col2.y + escFac * col3.y,1.0f); 
+            pixel->z = min(inNormFac * col1.z + outNormFac * col2.z + escFac * col3.z,1.0f); 
 			pixel->w = 1.0;
 		}
 	}
@@ -461,16 +473,25 @@ namespace wdw{
 
         if (ImGui::TreeNode("Color management"))
         {
-            //move to param
-            static ImVec4 color_step(0.23f, 1.0f, 1.0f, 1.0f);
-            static ImVec4 color_easeIn(0.f, 0.0f, 1.0f, 1.0f);
-            static ImVec4 color_easeOut(0.23f, 1.0f, 1.0f, 1.0f);
-            ImGui::ColorEdit4("Step color", (float*)&color_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("ease in color", (float*)&color_easeIn, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("ease out color", (float*)&color_easeOut, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
-            ImGui::DragFloat("int easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
-            ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.01f,10.0f);
+            static float c_in[4] = { 0.8f, 0.3f, 0.4f, 1.0f };
+            static float c_step[4] = { 1.0f, 0.5f, 0.2f, 1.0f };
+            static float c_out[4] = { 0.4f, 0.7f, 0.9f, 1.0f };
+            ImGui::ColorEdit4("ease in color", (float*)&c_in, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("Step color", (float*)&c_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("ease out color", (float*)&c_out, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::DragFloat("in easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
+            ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.001f,2.0f);
             
+            h_params.color_easeIn = MyCol{c_in};
+            h_params.color_step = MyCol{c_step};
+            h_params.color_easeOut = MyCol{c_out};
+
+            if(ImGui::Button("foo")) { //torm
+                std::cout << c_step[0] << " / " << c_step[1] << " / " << c_step[2] << " /" <<c_step[3] <<"\n";
+                std::cout << c_out[0] << " / " << c_out[1] << " / " << c_out[2] << " /" << c_out[3] <<"\n";
+                std::cout << c_in[0] << " / " << c_in[1] << " / " << c_in[2]<< " /"  << c_in[3] <<"\n";
+            }
+
             ImGui::TreePop();
         }
 
@@ -478,10 +499,22 @@ namespace wdw{
     }
     void julMandPreset(){
         ImGui::Begin("Julia Presets");
-        if(ImGui::Button("spiral1")) preset::spiral1();
-        if(ImGui::Button("spiral2")) preset::spiral2();
-        if(ImGui::Button("douady")) preset::douady();
-        if(ImGui::Button("branches")) preset::branches();
+
+        if (ImGui::TreeNode("Julia"))
+        {
+            if(ImGui::Button("spiral1")) preset::spiral1();
+            if(ImGui::Button("spiral2")) preset::spiral2();
+            if(ImGui::Button("douady")) preset::douady();
+            if(ImGui::Button("branches")) preset::branches();
+
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode("Bship Julia")){
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode("Colors scheme")){
+            ImGui::TreePop();
+        }
         ImGui::End();
     }
 
@@ -585,8 +618,9 @@ namespace cbk{
         
         //if ImGui doesn't want the event, process it
         if(!io.WantCaptureMouse){
-            if (yoffset >0) h_params.scale /= 1.05f;
-	        else h_params.scale *= 1.05f;
+            float fac = (GLFW_PRESS == glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) ?  1.16f : 1.05f;
+            if (yoffset >0) h_params.scale /= fac;
+	        else h_params.scale *= fac;
         }
     }
 
@@ -622,12 +656,18 @@ int main(void){
         h_params.scale = 0.003f;
         h_params.mx = 0.0f;
         h_params.my = 0.0f;
+        
         h_params.nb_iter = 7;
         h_params.minkowski_order = 2.0f;
         h_params.threshold = 4.0f;
         h_params.offset = Complex(0.0f, 0.0f);
+        
+        //color control
         h_params.easing_fac_in = 1.0f;
-        h_params.easing_fac_out = 1.0f;
+        h_params.easing_fac_out = 0.2f;
+         h_params.color_step = MyCol(1.0f, 0.5f, 0.2f, 1.0f);
+        h_params.color_easeIn = MyCol(0.8f, 0.3f, 0.4f, 1.0f);
+        h_params.color_easeOut = MyCol(0.4f, 0.7f, 0.9f, 1.0f);
     }
 
     /* Initialize callback*/
