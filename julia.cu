@@ -39,11 +39,13 @@ class Complex {
 
 struct Param {
     float scale;
-    float mx, my;
+    float mx, my; //mousepose
     int nb_iter;
     float minkowski_order;
     float threshold;
     Complex offset;
+    float easing_fac_in;
+    float easing_fac_out;
 };
 Param h_params;
 __constant__ Param d_params;
@@ -160,6 +162,8 @@ namespace gpu{
             int nb_iter = t_params.nb_iter;
             float order = t_params.minkowski_order;
             float thresh = t_params.threshold;
+            float fac_in = t_params.easing_fac_in;
+            float fac_out = t_params.easing_fac_out;
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
             int i = index / SCREENX;
@@ -175,25 +179,23 @@ namespace gpu{
 			pixel->x = 0.0;
 			pixel->y = 0.0;
 			pixel->z = 0.0;
-            bool br = false; bool bg = false;
             float norm;
 			for (int i = 0; i < nb_iter; i++) {
 				a = a * a + seed;
                 norm = minkowski(a, order);
-                if(!br){
-                    if (norm > thresh) {
-                        pixel->x=min(norm*0.6f,1.0f);
-                        br = true;
-                    }
+                
+                if(i == 10){
+                    pixel->z = min((norm -thresh)* fac_in, 1.0f);   // Blue based on early norm. Will be override if escape
                 }
-                if(!bg){
-                    if (norm > thresh) {
-                        pixel->y = 1 - (float)i / nb_iter;
-                        bg = true;
-                    }
+
+                if (norm > thresh) {                    
+                    pixel->x = 1.0f - i / nb_iter;                      // red based on escape time
+                    pixel->y = min((norm - thresh) * fac_out, 1.0f);   // green based on norm when escaping
+                    pixel->z = 0.0f;
+                    
+                    break;  // stop iterating after escape
                 }
 			}
-            pixel->z=min(norm,1.0f); //coloring interior
 			pixel->w = 1.0;
 		}
 	}
@@ -460,16 +462,14 @@ namespace wdw{
         if (ImGui::TreeNode("Color management"))
         {
             //move to param
-            static float in_fac = 1.0f;
-            static float out_fac = 1.0f;
             static ImVec4 color_step(0.23f, 1.0f, 1.0f, 1.0f);
             static ImVec4 color_easeIn(0.f, 0.0f, 1.0f, 1.0f);
             static ImVec4 color_easeOut(0.23f, 1.0f, 1.0f, 1.0f);
             ImGui::ColorEdit4("Step color", (float*)&color_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
             ImGui::ColorEdit4("ease in color", (float*)&color_easeIn, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
             ImGui::ColorEdit4("ease out color", (float*)&color_easeOut, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputHSV | ImGuiColorEditFlags_Float);
-            ImGui::DragFloat("int easing facor", &in_fac, 0.005f,0.1f,2.0f);
-            ImGui::DragFloat("out easing factor", &out_fac, 0.005f,0.1f,2.0f);
+            ImGui::DragFloat("int easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
+            ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.01f,10.0f);
             
             ImGui::TreePop();
         }
@@ -626,6 +626,8 @@ int main(void){
         h_params.minkowski_order = 2.0f;
         h_params.threshold = 4.0f;
         h_params.offset = Complex(0.0f, 0.0f);
+        h_params.easing_fac_in = 1.0f;
+        h_params.easing_fac_out = 1.0f;
     }
 
     /* Initialize callback*/
