@@ -15,7 +15,7 @@ While this repo is made for VSCode, it is **highly recommended** (*and probably 
 
 ## CUDA toolkit 12.5
 
-**FIXME** replace with exact string
+**FIXME** (replace with exact string)
 
 Download the version matching your OS :
 https://developer.nvidia.com/cuda-12-5-0-download-archive
@@ -66,7 +66,7 @@ nvcc template.cu ./imgui/imgui_draw.cpp ./imgui/imgui_impl_glfw.cpp ./imgui/imgu
 
 The VScode task will compile statically. (as it's obviously recommanded).
 If for some reason you want to compile dynamically, check the readme of glfw pre-compiled binairies
-At the very least you'll need to add glfw3.dll to your .exe directory (or path) and linking with glfw3dll.lib. Note that you can get rid of `-luser32`, `-lgdi32`, `-lshell32` if you're compiling dynamically
+At the very least you'll need to add glfw3.dll to your .exe directory (or path) and link with glfw3dll.lib. Note that you can get rid of `-luser32`, `-lgdi32`, `-lshell32` if you're compiling dynamically
 
 
 # Using ImGui
@@ -74,6 +74,8 @@ At the very least you'll need to add glfw3.dll to your .exe directory (or path) 
 You can learn more about ImGui here : [Original repo](https://github.com/ocornut/imgui)
 
 The easiest way to learn about ImGui is by running the example file and fooling arround. Then just ctrl+f in `imgui_demo.cpp` to find out how things are done
+
+**FIXME** (commmand to be confirmed)
 
 If you MSYS2 - mingw64 then you can install GLFW in mingw64 shell with 
 ```shell

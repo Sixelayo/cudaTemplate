@@ -1,29 +1,35 @@
 #include "util.hpp"
 #define TITLE "template"
 
-/* use task to compile or run command TODO*/
+/* FIXME add readme here*/
 
 struct Param {
     float scale;
     float mx, my;
 };
 Param h_params;
-// You can send params to GPU __constant__ memory if you need to have per-frame constant parameter common to every pixel instead of passing them as function argument
+/*
+ You can send params to GPU with :
+ __constant__ Param d_params;
+ memory if you need to have per-frame constant parameter common to every pixel instead of passing them as function argument. 
+ You'll need to copy h_params to d_params each frame
+ Be mindful whith memory access to d_params in device functions !
+ */
 
 
 namespace cpu{
     //forward declaration ...
-    void example(); void imp_Julia();
+    void example();
 
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
         gbl::display = example;
     }
-    void reinit(){
-        gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
-    }
     void clean(){
         free(gbl::pixels);
+    }
+    void reinit(){
+        gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
     }
 
     void example(){
@@ -52,7 +58,7 @@ namespace cpu{
 
 }//end namespace cpu
 
-namespace gpu{
+namespace gpu{ //replace with your own code
     //forward declaration ...
     void imp_Julia();
 
@@ -89,31 +95,6 @@ void reinit(){
 }
 
 
-namespace gbl{
-    void resizePixelsBuffer(){
-        reinit();
-    }
-
-    //handle fps computation, and reallocating buffer if needed(to avoid too many call to mallloc/free)
-    void calculate(GLFWwindow* window){
-        frameAcc++;
-        double timeCurr  = glfwGetTime();
-        float elapsedTime = timeCurr-prevUpdt;
-        if(elapsedTime>FPS_UPDATE_DELAY){
-            currentFPS = frameAcc / elapsedTime ;
-            frameAcc = 0;
-            prevUpdt = timeCurr;
-            if(needResize){
-                glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
-                resizePixelsBuffer();
-                paused = false;
-                needResize = false;
-            }
-        }
-
-    }
-}
-
 
 namespace cbk{ 
     /*various callback
@@ -121,23 +102,51 @@ namespace cbk{
     You can find relevant ImGui callback in ./imgui/imgui_impl_glfw.cpp line 536 in function ImGui_ImplGlfw_InstallCallbacks
     */
 
-    // void mouse_button(GLFWwindow* window, int button, int action, int mods){
-    //     // Forward the event to ImGui
-    //     ImGuiIO& io = ImGui::GetIO();
-    //     ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
-        
-    //     //if ImGui doesn't want the event, process it
-    //     if(!io.WantCaptureMouse){
-            
-    //     }
-    // }
+   void key(GLFWwindow* window, int key, int scancode, int action, int mods){
+        // Forward the event to ImGui
+        ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
 
-    static void cursor_position(GLFWwindow* window, double xpos, double ypos){
-        //forward the event to ImGui
+
+        //if ImGui doesn't want the event, process it
         ImGuiIO& io = ImGui::GetIO();
+        if(!io.WantCaptureKeyboard){
+            /* uses US keyboard layout ! https://www.glfw.org/docs/latest/group__keys.html
+            use charCallback if you want to avoid translation qwerty->azerty*/
+            if (key == GLFW_KEY_Z && action == GLFW_PRESS){ //match W in azerty
+                gbl::otherWindow = !gbl::otherWindow;
+            }
+        }
+    }
+
+    inline void updt_mpos(double xpos, double ypos){
+        h_params.mx = (float)(h_params.scale*(xpos - gbl::SCREEN_X / 2));
+        h_params.my = - (float)(h_params.scale*(ypos - gbl::SCREEN_Y / 2));
+    }
+
+    void mouse_button(GLFWwindow* window, int button, int action, int mods){
+        // Forward the event to ImGui
+        ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
+        
+        //if ImGui doesn't want the event, process it
+        ImGuiIO& io = ImGui::GetIO();
+        if(!io.WantCaptureMouse){
+            double xpos, ypos;
+            glfwGetCursorPos(window, &xpos, &ypos);
+            if(button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS){
+                updt_mpos(xpos, ypos);
+            }
+            if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
+                //...
+            }
+        }
+    }
+
+    void cursor_position(GLFWwindow* window, double xpos, double ypos){
+        //forward the event to ImGui
         ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
 
         //if ImGui doesn't want the event, process i
+        ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
             int leftState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
             if(leftState == GLFW_PRESS){
@@ -149,10 +158,10 @@ namespace cbk{
 
     void scroll(GLFWwindow* window, double xoffset, double yoffset){
         // Forward the event to ImGui
-        ImGuiIO& io = ImGui::GetIO();
         ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
         
         //if ImGui doesn't want the event, process it
+        ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
             if (yoffset >0) h_params.scale /= 1.05f;
 	        else h_params.scale *= 1.05f;
@@ -191,9 +200,13 @@ int main(void){
         h_params.scale = 0.003f;
         h_params.mx = 0.0f;
         h_params.my = 0.0f;
+
+        //add your own parameters ...
     }
+
     /* Initialize callback*/
-    //glfwSetMouseButtonCallback(window, cbk::mouse_button);
+    glfwSetKeyCallback(window, cbk::key);
+    glfwSetMouseButtonCallback(window, cbk::mouse_button);
     glfwSetCursorPosCallback(window, cbk::cursor_position);
     glfwSetScrollCallback(window, cbk::scroll);
     glfwSetWindowSizeCallback(window, cbk::window_size);
@@ -214,11 +227,10 @@ int main(void){
         gbl::display();
         if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         
-        /* end frame for imgui*/
+        /* Interface */
         utl::endframeImGui();
         utl::multiViewportImGui(window);
         
-
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
     }

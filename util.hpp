@@ -34,6 +34,9 @@
 #define FPS_UPDATE_DELAY 0.5
 
 
+//mandatory forward declaration
+void reinit();
+
 //global variables
 namespace gbl{
     int SCREEN_X=640;
@@ -52,6 +55,30 @@ namespace gbl{
     int frameAcc = 0; //number of frame since last FPS calculation
     double prevUpdt = 0.0; //time at previous FPS evaluation
     int currentFPS = 0.0f;
+
+
+    void resizePixelsBuffer(){
+        reinit();
+    }
+
+    //handle fps computation, and reallocating buffer if needed(to avoid too many call to mallloc/free)
+    void calculate(GLFWwindow* window){
+        frameAcc++;
+        double timeCurr  = glfwGetTime();
+        float elapsedTime = timeCurr-prevUpdt;
+        if(elapsedTime>FPS_UPDATE_DELAY){
+            currentFPS = frameAcc / elapsedTime ;
+            frameAcc = 0;
+            prevUpdt = timeCurr;
+            if(needResize){
+                glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
+                resizePixelsBuffer();
+                needResize = false;
+                paused = false;
+            }
+        }
+
+    }
 }//end namespace gbl
 
 

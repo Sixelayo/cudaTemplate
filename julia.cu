@@ -1,5 +1,5 @@
 #include "util.hpp"
-#define TITLE "template"
+#define TITLE "Julia"
 
 /*todo
 <addresse repo git>
@@ -541,31 +541,6 @@ void reinit(){
 	}
 }
 
-namespace gbl{
-    void resizePixelsBuffer(){
-        reinit();
-    }
-
-    //handle fps computation, and reallocating buffer if needed(to avoid too many call to mallloc/free)
-    void calculate(GLFWwindow* window){
-        frameAcc++;
-        double timeCurr  = glfwGetTime();
-        float elapsedTime = timeCurr-prevUpdt;
-        if(elapsedTime>FPS_UPDATE_DELAY){
-            currentFPS = frameAcc / elapsedTime ;
-            frameAcc = 0;
-            prevUpdt = timeCurr;
-            if(needResize){
-                glfwGetWindowSize(window, &SCREEN_X, &SCREEN_Y);
-                resizePixelsBuffer();
-                needResize = false;
-                paused = false;
-            }
-        }
-
-    }
-}
-
 
 namespace cbk{ 
     /*various callback
@@ -573,17 +548,33 @@ namespace cbk{
     You can find relevant ImGui callback in ./imgui/imgui_impl_glfw.cpp line 536 in function ImGui_ImplGlfw_InstallCallbacks
     */
 
-    inline void updt_mpos(double xpos, double ypos){
+
+    void key(GLFWwindow* window, int key, int scancode, int action, int mods){
+        // Forward the event to ImGui
+        ImGui_ImplGlfw_KeyCallback(window, key, scancode, action, mods);
+
+        //if ImGui doesn't want the event, process it
+        ImGuiIO& io = ImGui::GetIO();
+        if(!io.WantCaptureKeyboard){
+            /* uses US keyboard layout ! https://www.glfw.org/docs/latest/group__keys.html
+            use charCallback if you want to avoid translation qwerty->azerty*/
+            if (key == GLFW_KEY_Z && action == GLFW_PRESS){ //match W in azerty
+                gbl::otherWindow = !gbl::otherWindow;
+            }
+        }
+    }
+
+    void updt_mpos(double xpos, double ypos){
         h_params.mx = h_params.offset.a + (float)(h_params.scale*(xpos - gbl::SCREEN_X / 2));
         h_params.my = h_params.offset.b - (float)(h_params.scale*(ypos - gbl::SCREEN_Y / 2));
     }
 
     void mouse_button(GLFWwindow* window, int button, int action, int mods){
         // Forward the event to ImGui
-        ImGuiIO& io = ImGui::GetIO();
         ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
         
         //if ImGui doesn't want the event, process it
+        ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
             double xpos, ypos;
             glfwGetCursorPos(window, &xpos, &ypos);
@@ -597,12 +588,12 @@ namespace cbk{
         }
     }
 
-    static void cursor_position(GLFWwindow* window, double xpos, double ypos){
+    void cursor_position(GLFWwindow* window, double xpos, double ypos){
         //forward the event to ImGui
-        ImGuiIO& io = ImGui::GetIO();
         ImGui_ImplGlfw_CursorPosCallback(window, xpos, ypos);
 
         //if ImGui doesn't want the event, process i
+        ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
             int leftState = glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT);
             if(leftState == GLFW_PRESS){
@@ -613,10 +604,10 @@ namespace cbk{
 
     void scroll(GLFWwindow* window, double xoffset, double yoffset){
         // Forward the event to ImGui
-        ImGuiIO& io = ImGui::GetIO();
         ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
         
         //if ImGui doesn't want the event, process it
+        ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
             float fac = (GLFW_PRESS == glfwGetKey(window, GLFW_KEY_LEFT_CONTROL)) ?  1.16f : 1.05f;
             if (yoffset >0) h_params.scale /= fac;
@@ -671,6 +662,7 @@ int main(void){
     }
 
     /* Initialize callback*/
+    glfwSetKeyCallback(window, cbk::key);
     glfwSetMouseButtonCallback(window, cbk::mouse_button);
     glfwSetCursorPosCallback(window, cbk::cursor_position);
     glfwSetScrollCallback(window, cbk::scroll);
