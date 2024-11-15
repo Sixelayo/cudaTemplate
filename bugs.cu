@@ -108,7 +108,7 @@ namespace cpu{
     }
     void reinit(){
         gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
-        bugs::h_env = (bool*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool));
+        bugs::h_env = (bool*)realloc(bugs::h_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool));
     }
 
     int count_neighbors(int i, int j, int width, int height){
