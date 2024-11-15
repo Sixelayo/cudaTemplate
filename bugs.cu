@@ -40,11 +40,6 @@ struct MyCol{ //used for passing color to gpu
 };
 
 
-__device__ __host__ float minkowski(Complex c, float order) {
-    return pow((pow(c.a, order) + pow(c.b, order)), 1.0f / order);
-}
-
-
 struct Param {
     float scale;
     float mx, my; //mousepose
@@ -76,6 +71,14 @@ namespace preset{
     void random_config(){
         for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
             bugs::h_env[i] = (0 ==rand()%2);
+        }
+        if(gbl::mode == GPU_MODE){
+            checkCudaErrors( cudaMemcpy(bugs::d_env, bugs::h_env, gbl::SCREEN_X*gbl::SCREEN_Y, cudaMemcpyHostToDevice) ); //get pixels values from gpu
+        }
+    }
+    void clear_all(){
+        for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
+            bugs::h_env[i] = false;
         }
         if(gbl::mode == GPU_MODE){
             checkCudaErrors( cudaMemcpy(bugs::d_env, bugs::h_env, gbl::SCREEN_X*gbl::SCREEN_Y, cudaMemcpyHostToDevice) ); //get pixels values from gpu
@@ -138,23 +141,23 @@ namespace cpu{
 			for (j = 0; j < gbl::SCREEN_X; j++)
 			{
 				float4* p = gbl::pixels + (i * gbl::SCREEN_X + j);
-                bool* alive = bugs::h_env + (i * gbl::SCREEN_X + j);
+                bool* cell = bugs::h_env + (i * gbl::SCREEN_X + j);
 
                 //update environnement
 				int nb_neighbors = count_neighbors(i, j, gbl::SCREEN_X, gbl::SCREEN_Y);
-                if(*alive){
+                if(*cell){
                     if(h_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= h_params.SURVIVE_HIGH){}
-                    else{*alive = false;}
+                    else{*cell = false;}
                 }
                 else{ //if no cel, does it birth ?
-                    if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){}
-                    else{*alive = true;}
+                    if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){*cell = true;}
+                    else{}
                 }
 
                 
 
                 //update color
-                if(*alive){
+                if(*cell){
                     p->x = h_params.col_alive.x;p->y = h_params.col_alive.y;p->z = h_params.col_alive.z;
                 }
                 else{
@@ -218,6 +221,7 @@ namespace wdw{
         }
         if (ImGui::TreeNode("Options"))
         {
+            if(ImGui::Button("clear all")) preset::clear_all();
             if(ImGui::Button("random config")) preset::random_config();
 
             ImGui::TreePop();
