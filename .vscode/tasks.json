@@ -2,7 +2,7 @@
     "version": "2.0.0",
     "tasks": [
         {//build cuda with imgui
-        "label": "build nvcc",
+        "label": "build nvcc ImGui",
         "type": "shell",
         "command": "nvcc",
         "args": [
@@ -33,5 +33,21 @@
         "problemMatcher": ["$msCompile"],
         "detail": "mostly uses static lib"
     },
+    {//build cuda with imgui
+    "label": "nvcc",
+    "type": "shell",
+    "command": "nvcc",
+    "args": [
+        "${file}",
+        "-o",
+        "${fileDirname}\\exe\\${fileBasenameNoExtension}.exe",
+        //"--verbose"
+    ],
+    "options": {
+        "cwd": "${fileDirname}"
+    },
+    "problemMatcher": ["$msCompile"],
+    "detail": "mostly uses static lib"
+},
     ]
 }
