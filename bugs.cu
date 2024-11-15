@@ -1,4 +1,6 @@
 #include "util.hpp"
+#include <random>
+
 #define TITLE "Julia"
 
 
@@ -71,6 +73,15 @@ namespace preset{
         h_params.BIRTH_HIGH = birth_high;
     }
 
+    void random_config(){
+        for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
+            bugs::h_env[i] = (0 ==rand()%2);
+        }
+        if(gbl::mode == GPU_MODE){
+            checkCudaErrors( cudaMemcpy(bugs::d_env, bugs::h_env, gbl::SCREEN_X*gbl::SCREEN_Y, cudaMemcpyHostToDevice) ); //get pixels values from gpu
+        }
+    }
+
     void game_of_life(){
         set_preset(1,3,4,3,3);
     }
@@ -85,20 +96,39 @@ namespace cpu{
 
     void init(){
         gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
-        bugs::d_env = (bool*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(bool));
+        bugs::h_env = (bool*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(bool));
         gbl::display = imp_Bugs;
     }
     void clean(){
         free(gbl::pixels);
-        free(bugs::d_env);
+        free(bugs::h_env);
     }
     void reinit(){
         gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
-        bugs::d_env = (bool*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool));
+        bugs::h_env = (bool*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool));
     }
 
+    int count_neighbors(int i, int j, int width, int height){
+        int nb_neighbors = 0;
+        for(int offset_i = - h_params.RANGE; offset_i <= h_params.RANGE; offset_i++){
+            for(int offset_j = - h_params.RANGE; offset_j <= h_params.RANGE; offset_j++){
+            
+                if(offset_i == 0 && offset_j == 0) continue; //ignore self
+                
+                //warp in a donut shape
+                int coor_i = (i + offset_i + height) % height;
+                int coor_j = (j + offset_j + width) % width;
+
+                //if(coor_i%50==0 && coor_j%50==0) std::cout <<"/i:"<<coor_i<<"/j:"<<coor_j; //torm
+
+                if(*(bugs::h_env + (coor_i * width + coor_j))) nb_neighbors++;
+            }
+        }
+        return nb_neighbors;
+    }
 
     void imp_Bugs() {
+
         if(gbl::otherWindow) {
             wdw::automataParam();
         }
@@ -107,15 +137,31 @@ namespace cpu{
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
 			{
-				float x = (float)(h_params.scale * (j - gbl::SCREEN_X / 2));
-				float y = (float)(h_params.scale * (i - gbl::SCREEN_Y / 2));
 				float4* p = gbl::pixels + (i * gbl::SCREEN_X + j);
-				// default: black
-				p->x = 0.0f;
-				p->y = 0.0f;
-				p->z = 0.0f;
+                bool* alive = bugs::h_env + (i * gbl::SCREEN_X + j);
+
+                //update environnement
+				int nb_neighbors = count_neighbors(i, j, gbl::SCREEN_X, gbl::SCREEN_Y);
+                if(*alive){
+                    if(h_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= h_params.SURVIVE_HIGH){}
+                    else{*alive = false;}
+                }
+                else{ //if no cel, does it birth ?
+                    if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){}
+                    else{*alive = true;}
+                }
+
+                
+
+                //update color
+                if(*alive){
+                    p->x = h_params.col_alive.x;p->y = h_params.col_alive.y;p->z = h_params.col_alive.z;
+                }
+                else{
+                    p->x = h_params.col_dead.x;p->y = h_params.col_dead.y;p->z = h_params.col_dead.z;          
+                }
 				p->w = 1.0f;
-                //if mahcin col alive
+
 
 			}
 	}
@@ -147,33 +193,9 @@ namespace gpu{
         checkCudaErrors( cudaMemcpyToSymbol(d_params, &params, sizeof(Param)) );
     }
 
-    __global__ void juliaColor(float4* pixels, int SCREENX, int SCREENY) {
-		int index = threadIdx.x + blockIdx.x * blockDim.x;
-		if (index < SCREENX * SCREENY) {
-            //access constant memory once per thread !
-            Param t_params = d_params;
-            //copy param do name
-		}
-	}
+    void imp_Bugs(){
 
-
-
-	void imp_Bugs(){
-        if(gbl::otherWindow){
-            wdw::automataParam();
-        }
-
-		int N = gbl::SCREEN_X * gbl::SCREEN_Y;
-		int M = 256;
-		
-		//... nothings to send to gpu
-		// juliaColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, h_params.mx, h_params.my, 
-        //         h_params.nb_iter, h_params.minkowski_order, h_params.threshold,
-        //         gbl::SCREEN_X, gbl::SCREEN_Y, h_params.scale, h_params.offset); 
-		juliaColor << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y); 
-		checkKernelErrors();
-		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
-	}
+    }
 
 }//end namespace gpu
 
@@ -194,6 +216,14 @@ namespace wdw{
 
             ImGui::TreePop();
         }
+        if (ImGui::TreeNode("Options"))
+        {
+            if(ImGui::Button("random config")) preset::random_config();
+
+            ImGui::TreePop();
+        }
+
+
 
         /*
         if (ImGui::TreeNode("Color management"))
@@ -355,7 +385,7 @@ int main(void){
         
         //color control
         h_params.col_dead = MyCol(0.1f, 0.1f, 0.1f, 1.0f);
-        h_params.col_alive = MyCol(0.3f, 0.9f, 0.3f, 1.0f);
+        h_params.col_alive = MyCol(0.3f, 0.4f, 0.3f, 1.0f);
 
         preset::bugs();
     }

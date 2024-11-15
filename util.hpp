@@ -47,7 +47,7 @@ namespace gbl{
     //display callback for drawing pixels
     void (*display)();
 
-    int mode = GPU_MODE;
+    int mode = CPU_MODE;
     bool paused = false;        //stop displaying pixel (prevent unallowed memory access when processing callback)
     bool needResize = false;    //if pixel buffer needs to be reallocated (prevent too many calls to  free/malloc)
     bool otherWindow = true;    //display or not other window
