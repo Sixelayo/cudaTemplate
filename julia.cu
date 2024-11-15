@@ -1,11 +1,6 @@
 #include "util.hpp"
 #define TITLE "Julia"
 
-/*todo
-<addresse repo git>
-Copier / colé du readme
-
-*/
 
 //mandatory forward declaration
 namespace wdw{

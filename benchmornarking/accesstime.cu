@@ -1,25 +1,4 @@
-#include <iostream>
-#include <stdio.h>
-
-#ifndef NDEBUG
-    #define checkCudaErrors(err) __checkCudaErrors(err, __FILE__, __LINE__)
-    inline void __checkCudaErrors(cudaError err, const char* file, const int line) {
-        if (err != cudaSuccess)
-        {
-            fprintf(stderr, "%s(%i) : CUDA Runtime API error %d: %s.\n",
-                file, line, (int)err, cudaGetErrorString(err));
-            system("pause");
-            exit(1);
-        }
-    }
-    inline void checkKernelErrors() {
-        cudaDeviceSynchronize();
-        checkCudaErrors(cudaGetLastError());
-    }
-#else //disable GPU debuging
-    #define checkCudaErrors(err) err
-    inline void checkKernelErrors() {}
-#endif
+#include "../cudaUtils.hpp"
 
 
 #define SIZE 4096
@@ -31,25 +10,6 @@ __constant__ float d_idata_const[SIZE];
 //float* h_idata; not needed
 float* d_idata;
 float* d_odata;
-
-cudaEvent_t cstart, cstop;
-float cdiff;
-void startTimer() {
-	checkCudaErrors( cudaEventCreate(&cstart) );
-	checkCudaErrors( cudaEventCreate(&cstop) );
-	checkCudaErrors( cudaEventRecord(cstart) );
-
-}
-float stopTimer(char* str){
-	checkCudaErrors( cudaEventRecord(cstop) );
-	checkCudaErrors( cudaEventSynchronize(cstop) );
-	checkCudaErrors( cudaEventElapsedTime(&cdiff, cstart, cstop) );
-	printf("%s\tCUDA time is % .6f ms\n",str, cdiff);
-	checkCudaErrors( cudaEventDestroy(cstart) );
-	checkCudaErrors( cudaEventDestroy(cstop) );
-	return cdiff;
-}
-
 
 __global__ void testglobalmem(float* d_idata, float* d_odata) {
     int i = blockIdx.x*blockDim.x + threadIdx.x;
