@@ -8,6 +8,11 @@ namespace wdw{
     void julMandPreset();
 }
 
+//colors (messy architectures because erm ... types compatibility)
+static float PARAM_c_in[4] = { 0.8f, 0.3f, 0.4f, 1.0f };
+static float PARAM_c_step[4] = { 1.0f, 0.5f, 0.2f, 1.0f };
+static float PARAM_c_out[4] = { 0.4f, 0.7f, 0.9f, 1.0f };
+
 
 
 //complexe numbe stored as a+ib
@@ -57,6 +62,8 @@ Param h_params;
 __constant__ Param d_params;
 
 namespace preset{
+
+    //julia
     void center(){
         h_params.scale = 0.0035f;
         h_params.offset =  {0,0};
@@ -79,9 +86,61 @@ namespace preset{
         h_params.my = 0.75f;
     }
     void branches(){
-        h_params.mx = 0.35; 
+        h_params.mx = 0.35f; 
         h_params.my = 0.35f;
     }
+    void leaves(){
+        h_params.minkowski_order = 0.0001f;
+        h_params.mx = -0.4f; 
+        h_params.my = -0.6f;
+    }
+
+    //julia bship
+    void brain(){
+        h_params.mx = 0.4; 
+        h_params.my = 0.236f;
+    }
+    void tiles(){
+        h_params.mx = -0.655f; 
+        h_params.my = -0.425f;
+    }
+    void tree(){
+        h_params.mx = 0.4; 
+        h_params.my = 0.236f;
+    }
+
+    //mbrot
+    void burningship(){
+        h_params.offset = {-1.76,0.02f};
+        h_params.scale = 0.00023f;
+    }
+
+    //colors
+    void colors_1_default(){
+        float new_values1[4] = {1.0f, 0.5f, 0.2f, 1.0f};
+        memcpy(PARAM_c_step, new_values1, sizeof(new_values1));
+        float new_values2[4] = {0.8f, 0.3f, 0.4f, 1.0f};
+        memcpy(PARAM_c_in, new_values2, sizeof(new_values2));
+        float new_values3[4] = {0.4f, 0.7f, 0.9f, 1.0f};
+        memcpy(PARAM_c_out, new_values3, sizeof(new_values3));
+    }
+    void colors_2_tree(){
+        float new_values1[4] = {0.15f, 0.4f, 0.1f, 1.0f};
+        memcpy(PARAM_c_step, new_values1, sizeof(new_values1));
+        float new_values2[4] = {0.01f, 0.9f, 0.75f, 1.0f};
+        memcpy(PARAM_c_in, new_values2, sizeof(new_values2));
+        float new_values3[4] = {0.1f, 0.1f, 0.1f, 1.0f};
+        memcpy(PARAM_c_out, new_values3, sizeof(new_values3));
+    }
+    void colors_3_brain(){
+        float new_values1[4] = {0.3f, 0.3f, 0.3f, 1.0f};
+        memcpy(PARAM_c_step, new_values1, sizeof(new_values1));
+        float new_values2[4] = {0.5f, 0.5f, 0.4f, 1.0f};
+        memcpy(PARAM_c_in, new_values2, sizeof(new_values2));
+        float new_values3[4] = {0.6f, 0.7f, 0.7f, 1.0f};
+        memcpy(PARAM_c_out, new_values3, sizeof(new_values3));
+    }
+
 }//end namespace prs
 
 
@@ -446,7 +505,7 @@ namespace wdw{
         ImGui::InputFloat("##imaginary", &h_params.my);
         ImGui::SameLine(); ImGui::Text("i");
 
-        ImGui::Text("Center in complex plane : %.2f+%.2fi",h_params.offset.a, h_params.offset.b);
+        ImGui::Text("Center in complex plane : %.2f+%.2fi \n scaling factor : %.5f",h_params.offset.a, h_params.offset.b, h_params.scale);
         ImGui::Text("Width : %.2f, height : %.2f", h_params.scale * gbl::SCREEN_X, h_params.scale * gbl::SCREEN_Y);
 
 
@@ -468,27 +527,26 @@ namespace wdw{
 
         if (ImGui::TreeNode("Color management"))
         {
-            static float c_in[4] = { 0.8f, 0.3f, 0.4f, 1.0f };
-            static float c_step[4] = { 1.0f, 0.5f, 0.2f, 1.0f };
-            static float c_out[4] = { 0.4f, 0.7f, 0.9f, 1.0f };
-            ImGui::ColorEdit4("ease in color", (float*)&c_in, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("Step color", (float*)&c_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("ease out color", (float*)&c_out, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("ease in color", (float*)&PARAM_c_in, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("Step color", (float*)&PARAM_c_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
+            ImGui::ColorEdit4("ease out color", (float*)&PARAM_c_out, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
             ImGui::DragFloat("in easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
             ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.001f,2.0f);
-            
-            h_params.color_easeIn = MyCol{c_in};
-            h_params.color_step = MyCol{c_step};
-            h_params.color_easeOut = MyCol{c_out};
 
-            if(ImGui::Button("foo")) { //torm
-                std::cout << c_step[0] << " / " << c_step[1] << " / " << c_step[2] << " /" <<c_step[3] <<"\n";
-                std::cout << c_out[0] << " / " << c_out[1] << " / " << c_out[2] << " /" << c_out[3] <<"\n";
-                std::cout << c_in[0] << " / " << c_in[1] << " / " << c_in[2]<< " /"  << c_in[3] <<"\n";
-            }
+
+            // if(ImGui::Button("foo")) { //torm
+            //     std::cout << c_step[0] << " / " << c_step[1] << " / " << c_step[2] << " /" <<c_step[3] <<"\n";
+            //     std::cout << c_out[0] << " / " << c_out[1] << " / " << c_out[2] << " /" << c_out[3] <<"\n";
+            //     std::cout << c_in[0] << " / " << c_in[1] << " / " << c_in[2]<< " /"  << c_in[3] <<"\n";
+            // }
 
             ImGui::TreePop();
         }
+
+        //could probably be movec elsewhere for optimization
+        h_params.color_easeIn = MyCol{PARAM_c_in};
+        h_params.color_step = MyCol{PARAM_c_step};
+        h_params.color_easeOut = MyCol{PARAM_c_out};
 
         ImGui::End();
     }
@@ -501,13 +559,25 @@ namespace wdw{
             if(ImGui::Button("spiral2")) preset::spiral2();
             if(ImGui::Button("douady")) preset::douady();
             if(ImGui::Button("branches")) preset::branches();
+            if(ImGui::Button("leaves")) preset::leaves();
 
             ImGui::TreePop();
         }
         if (ImGui::TreeNode("Bship Julia")){
+            if(ImGui::Button("brain")) preset::brain();
+            if(ImGui::Button("tree")) preset::tree();
+            if(ImGui::Button("tiles")) preset::tiles();
+
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNode("Burningship")){
+            if(ImGui::Button("center on bship")) preset::burningship();
             ImGui::TreePop();
         }
         if (ImGui::TreeNode("Colors scheme")){
+            if(ImGui::Button("default")) preset::colors_1_default();
+            if(ImGui::Button("tree")) preset::colors_2_tree();
+            if(ImGui::Button("brain")) preset::colors_3_brain();
             ImGui::TreePop();
         }
         ImGui::End();
@@ -651,9 +721,7 @@ int main(void){
         //color control
         h_params.easing_fac_in = 1.0f;
         h_params.easing_fac_out = 0.2f;
-         h_params.color_step = MyCol(1.0f, 0.5f, 0.2f, 1.0f);
-        h_params.color_easeIn = MyCol(0.8f, 0.3f, 0.4f, 1.0f);
-        h_params.color_easeOut = MyCol(0.4f, 0.7f, 0.9f, 1.0f);
+        preset::colors_1_default();
     }
 
     /* Initialize callback*/
