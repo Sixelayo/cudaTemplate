@@ -11,10 +11,30 @@ namespace wdw{
 namespace gbl{
     int max_fps;
 }
+namespace gpu{
+    bool gridSwap;
+}
 
 namespace bugs{
-    bool* h_env;
-    bool* d_env;
+    float4* h_grid;
+    float4* d_grid1;
+    float4* d_grid2;
+
+    __device__ __host__ inline void aliveCell(float4* cell){
+        cell->x = 1.0f;
+        cell->y = 1.0f;
+        cell->z = 1.0f;
+    }
+    __device__ __host__ inline void killCell(float4* cell){
+        cell->x = 0.0f;
+        cell->y = 0.0f;
+        cell->z = 0.0f;
+    }
+    __device__ __host__ inline bool isAlive(float4* cell){
+        return (cell->x > 0.9);
+        
+    }
+
 }
 
 
@@ -73,18 +93,33 @@ namespace preset{
 
     void random_config(){
         for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
-            bugs::h_env[i] = (0 ==rand()%2);
+            if(0 ==rand()%2){
+                bugs::h_grid[i].x = 1.0;
+                bugs::h_grid[i].y = 1.0;
+                bugs::h_grid[i].z = 1.0;
+                bugs::h_grid[i].w = 1.0;
+            } else{
+                bugs::h_grid[i].x = 0.0;
+                bugs::h_grid[i].y = 0.0;
+                bugs::h_grid[i].z = 0.0;
+                bugs::h_grid[i].w = 1.0;
+            }
         }
         if(gbl::mode == GPU_MODE){
-            checkCudaErrors( cudaMemcpy(bugs::d_env, bugs::h_env, gbl::SCREEN_X*gbl::SCREEN_Y, cudaMemcpyHostToDevice) ); //get pixels values from gpu
+            checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) ); //get pixels values from gpu
+            gpu::gridSwap = false;
         }
     }
     void clear_all(){
         for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
-            bugs::h_env[i] = false;
+            bugs::h_grid[i].x = 0.0f;
+            bugs::h_grid[i].x = 0.0f;
+            bugs::h_grid[i].x = 0.0f;
+            bugs::h_grid[i].x = 1.0f;
         }
         if(gbl::mode == GPU_MODE){
-            checkCudaErrors( cudaMemcpy(bugs::d_env, bugs::h_env, gbl::SCREEN_X*gbl::SCREEN_Y, cudaMemcpyHostToDevice) ); //get pixels values from gpu
+            checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) ); //get pixels values from gpu
+            gpu::gridSwap = false;
         }
     }
 
@@ -101,17 +136,14 @@ namespace cpu{
     void imp_Bugs();
 
     void init(){
-        gbl::pixels = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
-        bugs::h_env = (bool*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(bool));
+        bugs::h_grid = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
         gbl::display = imp_Bugs;
     }
     void clean(){
-        free(gbl::pixels);
-        free(bugs::h_env);
+        free(bugs::h_grid);
     }
     void reinit(){
-        gbl::pixels = (float4*)realloc(gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
-        bugs::h_env = (bool*)realloc(bugs::h_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool));
+        bugs::h_grid = (float4*)realloc(bugs::h_grid, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
     }
 
     int count_neighbors(int i, int j, int width, int height){
@@ -125,7 +157,7 @@ namespace cpu{
                 int coor_i = (i + offset_i + height) % height;
                 int coor_j = (j + offset_j + width) % width;
 
-                if(*(bugs::h_env + (coor_i * width + coor_j))) nb_neighbors++;
+                if((bugs::h_grid + (coor_i * width + coor_j))->x > .9) nb_neighbors++;
             }
         }
         return nb_neighbors;
@@ -137,30 +169,29 @@ namespace cpu{
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
 			{
-				float4* p = gbl::pixels + (i * gbl::SCREEN_X + j);
-                bool* cell = bugs::h_env + (i * gbl::SCREEN_X + j);
+                float4* cell = bugs::h_grid + (i * gbl::SCREEN_X + j);
 
                 //update environnement
 				int nb_neighbors = count_neighbors(i, j, gbl::SCREEN_X, gbl::SCREEN_Y);
-                if(*cell){
+                if(bugs::isAlive(cell)){
                     if(h_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= h_params.SURVIVE_HIGH){}
-                    else{*cell = false;}
+                    else{bugs::killCell(cell);}
                 }
                 else{ //if no cel, does it birth ?
-                    if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){*cell = true;}
+                    if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){bugs::aliveCell(cell);}
                     else{}
                 }
 
                 
 
-                //update color
-                if(*cell){
-                    p->x = h_params.col_alive.x;p->y = h_params.col_alive.y;p->z = h_params.col_alive.z;
-                }
-                else{
-                    p->x = h_params.col_dead.x;p->y = h_params.col_dead.y;p->z = h_params.col_dead.z;          
-                }
-				p->w = 1.0f;
+                // //update color
+                // if(bugs::isAlive(cell)){
+                //     p->x = h_params.col_alive.x;p->y = h_params.col_alive.y;p->z = h_params.col_alive.z;
+                // }
+                // else{
+                //     p->x = h_params.col_dead.x;p->y = h_params.col_dead.y;p->z = h_params.col_dead.z;          
+                // }
+				// p->w = 1.0f;
 
 
 			}
@@ -169,30 +200,21 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
-    float4* d_grid1;
-    float4* d_grid2;
-
-
     void imp_Bugs();
 
     void init(){
-        checkCudaErrors( cudaMallocHost((void**) &gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-	    //checkCudaErrors( cudaMalloc((void**)&gbl::d_pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-	    checkCudaErrors( cudaMalloc((void**)&gpu::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-	    checkCudaErrors( cudaMalloc((void**)&gpu::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+        checkCudaErrors( cudaMallocHost((void**) &bugs::h_grid, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)));
+	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 
-        checkCudaErrors( cudaMallocHost((void**) &bugs::h_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool)) );
-	    checkCudaErrors( cudaMalloc((void**) &bugs::d_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool)));
+        gridSwap = false;
         gbl::display = imp_Bugs;
     }
     void clean(){
-        checkCudaErrors( cudaFreeHost(gbl::pixels));
-	    //checkCudaErrors( cudaFree(gbl::d_pixels) );
-	    checkCudaErrors( cudaFree(gpu::d_grid1) );
-	    checkCudaErrors( cudaFree(gpu::d_grid2) );
+        checkCudaErrors( cudaFreeHost(bugs::h_grid));
+	    checkCudaErrors( cudaFree(bugs::d_grid1) );
+	    checkCudaErrors( cudaFree(bugs::d_grid2) );
 
-        checkCudaErrors( cudaFreeHost(bugs::h_env));
-	    checkCudaErrors( cudaFree(bugs::d_env) );
     }
     void reinit(){
         clean();
@@ -204,35 +226,51 @@ namespace gpu{
     }
 
 
-    // __global__ void kernelBugs(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
-	// 	int index = threadIdx.x + blockIdx.x * blockDim.x;
-	// 	if (index < SCREENX * SCREENY) {
-    //         //access constant memory once per thread !
-    //         Param t_params = d_params;
-    //         float scale = t_params.scale;
-    //         Complex offset = t_params.offset;
-    //         float sx = t_params.mx;
-    //         float sy = t_params.my;
+    __global__ void kernelBugs(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+            float scale = t_params.scale;
+            Complex offset = t_params.offset;
+            float sx = t_params.mx;
+            float sy = t_params.my;
 
 
-    //         //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
-    //         int i = index / SCREENX;
-	// 	    int j = index - i * SCREENX;
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
 
-	// 		//new cell
-    //         float4* cellNew = gridNew + (i * SCREENX + j);
-    //         //compute alive in neightborhood
+			//new cell
+            float4* cellNew = gridNew + (i * SCREENX + j);
+            //compute alive in neightborhood
 
-    //         //if ... cell new = ...
+            //if ... cell new = ...
 			
-	// 	}
-	// }
+		}
+	}
 
     void imp_Bugs(){
-        //initialisatio
-        //compute grid1->2 or grid2->1
+        //initialisation
+        int N = gbl::SCREEN_X * gbl::SCREEN_Y;
+		int M = 256;
+
+        //grid swapping 1=>2 / 2=>1
+        float4* oldgrid, *newgrid;
+        if(gridSwap){
+            oldgrid = bugs::d_grid1;
+            newgrid = bugs::d_grid2;
+        } else{
+            oldgrid = bugs::d_grid2;
+            newgrid = bugs::d_grid1;
+        }
+        gridSwap = !gridSwap;
+
+        //computation
+        kernelBugs << <(N + M - 1) / M, M >> > (oldgrid, newgrid, gbl::SCREEN_X, gbl::SCREEN_Y);
 
         //fecth grid from GPU to CPU
+        checkCudaErrors( cudaMemcpy(bugs::h_grid, newgrid, N * sizeof(float4), cudaMemcpyDeviceToHost));
     }
 
 }//end namespace gpu
@@ -241,8 +279,8 @@ namespace wdw{
     void automataParam(){
         ImGui::Begin("Celular automata");
 
-        ImGui::InputInt("nb step", &gbl::max_fps);
-        ImGui::Spacing();
+        ImGui::InputInt("max iter/frame", &gbl::max_fps);
+        ImGui::NewLine();
 
         ImGui::InputInt("RANGE", &h_params.RANGE);
         ImGui::InputInt("SURVIVE_LOW", &h_params.SURVIVE_LOW);
@@ -430,8 +468,8 @@ int main(void){
         h_params.col_alive = MyCol(0.3f, 0.4f, 0.3f, 1.0f);
 
         //framerate
-        gbl::max_fps = 10;
-        preset::bugs();
+        gbl::max_fps = 20;
+        preset::game_of_life();
     }
 
     /* Initialize callback*/
@@ -468,7 +506,7 @@ int main(void){
             gbl::display();
             last_frame_time = curr_time;
         }            
-        if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
+        if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, bugs::h_grid);
         
   
 
