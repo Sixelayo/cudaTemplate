@@ -18,4 +18,4 @@
 - implémentaiton gpu
 - utiliser la shared memory pour lire tuile par tuile
 
-- zoomer dans les pixels (flemne)
+- un problème actuellement sur la bordure ??

@@ -1,12 +1,15 @@
 #include "util.hpp"
 #include <random>
 
-#define TITLE "Julia"
+#define TITLE "Bugs"
 
 
 //mandatory forward declaration
 namespace wdw{
     void automataParam();
+}
+namespace gbl{
+    int max_fps;
 }
 
 namespace bugs{
@@ -122,20 +125,14 @@ namespace cpu{
                 int coor_i = (i + offset_i + height) % height;
                 int coor_j = (j + offset_j + width) % width;
 
-                //if(coor_i%50==0 && coor_j%50==0) std::cout <<"/i:"<<coor_i<<"/j:"<<coor_j; //torm
-
                 if(*(bugs::h_env + (coor_i * width + coor_j))) nb_neighbors++;
             }
         }
         return nb_neighbors;
     }
 
+
     void imp_Bugs() {
-
-        if(gbl::otherWindow) {
-            wdw::automataParam();
-        }
-
 		int i, j;
 		for (i = 0; i < gbl::SCREEN_Y; i++)
 			for (j = 0; j < gbl::SCREEN_X; j++)
@@ -172,18 +169,28 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
+    float4* d_grid1;
+    float4* d_grid2;
+
+
     void imp_Bugs();
 
     void init(){
         checkCudaErrors( cudaMallocHost((void**) &gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-	    checkCudaErrors( cudaMalloc((void**)&gbl::d_pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+	    //checkCudaErrors( cudaMalloc((void**)&gbl::d_pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+	    checkCudaErrors( cudaMalloc((void**)&gpu::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+	    checkCudaErrors( cudaMalloc((void**)&gpu::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+
         checkCudaErrors( cudaMallocHost((void**) &bugs::h_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool)) );
-	    checkCudaErrors( cudaMalloc((void**)&bugs::d_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool)));
+	    checkCudaErrors( cudaMalloc((void**) &bugs::d_env, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(bool)));
         gbl::display = imp_Bugs;
     }
     void clean(){
         checkCudaErrors( cudaFreeHost(gbl::pixels));
-	    checkCudaErrors( cudaFree(gbl::d_pixels) );
+	    //checkCudaErrors( cudaFree(gbl::d_pixels) );
+	    checkCudaErrors( cudaFree(gpu::d_grid1) );
+	    checkCudaErrors( cudaFree(gpu::d_grid2) );
+
         checkCudaErrors( cudaFreeHost(bugs::h_env));
 	    checkCudaErrors( cudaFree(bugs::d_env) );
     }
@@ -196,8 +203,36 @@ namespace gpu{
         checkCudaErrors( cudaMemcpyToSymbol(d_params, &params, sizeof(Param)) );
     }
 
-    void imp_Bugs(){
 
+    // __global__ void kernelBugs(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
+	// 	int index = threadIdx.x + blockIdx.x * blockDim.x;
+	// 	if (index < SCREENX * SCREENY) {
+    //         //access constant memory once per thread !
+    //         Param t_params = d_params;
+    //         float scale = t_params.scale;
+    //         Complex offset = t_params.offset;
+    //         float sx = t_params.mx;
+    //         float sy = t_params.my;
+
+
+    //         //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+    //         int i = index / SCREENX;
+	// 	    int j = index - i * SCREENX;
+
+	// 		//new cell
+    //         float4* cellNew = gridNew + (i * SCREENX + j);
+    //         //compute alive in neightborhood
+
+    //         //if ... cell new = ...
+			
+	// 	}
+	// }
+
+    void imp_Bugs(){
+        //initialisatio
+        //compute grid1->2 or grid2->1
+
+        //fecth grid from GPU to CPU
     }
 
 }//end namespace gpu
@@ -205,6 +240,9 @@ namespace gpu{
 namespace wdw{
     void automataParam(){
         ImGui::Begin("Celular automata");
+
+        ImGui::InputInt("nb step", &gbl::max_fps);
+        ImGui::Spacing();
 
         ImGui::InputInt("RANGE", &h_params.RANGE);
         ImGui::InputInt("SURVIVE_LOW", &h_params.SURVIVE_LOW);
@@ -391,6 +429,8 @@ int main(void){
         h_params.col_dead = MyCol(0.1f, 0.1f, 0.1f, 1.0f);
         h_params.col_alive = MyCol(0.3f, 0.4f, 0.3f, 1.0f);
 
+        //framerate
+        gbl::max_fps = 10;
         preset::bugs();
     }
 
@@ -401,6 +441,8 @@ int main(void){
     glfwSetScrollCallback(window, cbk::scroll);
     glfwSetWindowSizeCallback(window, cbk::window_size);
 
+    /*start timer*/
+    double last_frame_time = glfwGetTime();
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
@@ -410,14 +452,26 @@ int main(void){
 
         /* Interface*/
         utl::newframeImGui();
-        if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+        if(gbl::otherWindow) {
+            utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+            wdw::automataParam();
+        }
         
-        /* Render here */
+        //timer management
+        double curr_time = glfwGetTime();
+        double framerate = (double)1 / (double)gbl::max_fps;
+
+        /* Render */
         gbl::calculate(window);
         gpu::setDeviceParameters(h_params);
-        gbl::display();
+        if(curr_time -  last_frame_time > framerate){
+            gbl::display();
+            last_frame_time = curr_time;
+        }            
         if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
         
+  
+
         /* end frame for imgui*/
         utl::endframeImGui();
         utl::multiViewportImGui(window);
