@@ -21,10 +21,12 @@ REPORT
 - not possible to dynamically switch between implementation
 
 TODO:
-- sur les côté le clamp en donuts il déconne
-- le game of life déconne en gpu ???
+- le code CPU est FAUX (il met à jour dans le parcours puis évalue) utiliser une alternance netre les grid
+- sur les côté le clamp en donuts il déconne (probablement lié au problème précédent)
 
-- utiliser la shared memory pour lire tuile par tuile
+- le code est faux, il faut un swap aussi sur cpu pour éviter les enmerdes
+- le game of life déconne en gpu ??? (le code est pas bon)
+
 - it's possible to dynamically switch between GPU/CPU implementation ?? (flemne)
 
-- un problème actuellement sur la bordure ??
+- utiliser la shared memory pour lire tuile par tuile

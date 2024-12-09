@@ -168,24 +168,6 @@ namespace cpu{
         bugs::h_grid = (float4*)realloc(bugs::h_grid, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
     }
 
-//torm todo
-    // int count_neighbors(int i, int j, int width, int height){
-    //     int nb_neighbors = 0;
-    //     for(int offset_i = - h_params.RANGE; offset_i <= h_params.RANGE; offset_i++){
-    //         for(int offset_j = - h_params.RANGE; offset_j <= h_params.RANGE; offset_j++){
-            
-    //             if(offset_i == 0 && offset_j == 0) continue; //ignore self
-                
-    //             //warp in a donut shape
-    //             int coor_i = (i + offset_i + height) % height;
-    //             int coor_j = (j + offset_j + width) % width;
-
-    //             if((bugs::h_grid + (coor_i * width + coor_j))->x > .9) nb_neighbors++;
-    //         }
-    //     }
-    //     return nb_neighbors;
-    // }
-
 
     void imp_Bugs() {
 		int i, j;
