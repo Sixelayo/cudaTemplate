@@ -29,4 +29,5 @@ TODO:
 
 - it's possible to dynamically switch between GPU/CPU implementation ?? (flemne)
 
+- implémenter les autres presets de chatgpt
 - utiliser la shared memory pour lire tuile par tuile
