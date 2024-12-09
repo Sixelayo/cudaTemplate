@@ -35,6 +35,23 @@ namespace bugs{
         
     }
 
+    __device__ __host__ int count_neighbors(int i, int j, float4* oldgrid, int width, int height, int range){
+        int nb_neighbors = 0;
+        for(int offset_i = - range; offset_i <= range; offset_i++){
+            for(int offset_j = - range; offset_j <= range; offset_j++){
+            
+                if(offset_i == 0 && offset_j == 0) continue; //ignore self
+                
+                //warp in a donut shape
+                int coor_i = (i + offset_i + height) % height;
+                int coor_j = (j + offset_j + width) % width;
+                float4* cell = oldgrid + (coor_i * width + coor_j);
+
+                if(bugs::isAlive(cell)) nb_neighbors++;
+            }
+        }
+        return nb_neighbors;
+    }
 }
 
 
@@ -106,7 +123,8 @@ namespace preset{
             }
         }
         if(gbl::mode == GPU_MODE){
-            checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) ); //get pixels values from gpu
+            //send grid to gpu
+            checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
             gpu::gridSwap = false;
         }
     }
@@ -146,33 +164,34 @@ namespace cpu{
         bugs::h_grid = (float4*)realloc(bugs::h_grid, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
     }
 
-    int count_neighbors(int i, int j, int width, int height){
-        int nb_neighbors = 0;
-        for(int offset_i = - h_params.RANGE; offset_i <= h_params.RANGE; offset_i++){
-            for(int offset_j = - h_params.RANGE; offset_j <= h_params.RANGE; offset_j++){
+//torm todo
+    // int count_neighbors(int i, int j, int width, int height){
+    //     int nb_neighbors = 0;
+    //     for(int offset_i = - h_params.RANGE; offset_i <= h_params.RANGE; offset_i++){
+    //         for(int offset_j = - h_params.RANGE; offset_j <= h_params.RANGE; offset_j++){
             
-                if(offset_i == 0 && offset_j == 0) continue; //ignore self
+    //             if(offset_i == 0 && offset_j == 0) continue; //ignore self
                 
-                //warp in a donut shape
-                int coor_i = (i + offset_i + height) % height;
-                int coor_j = (j + offset_j + width) % width;
+    //             //warp in a donut shape
+    //             int coor_i = (i + offset_i + height) % height;
+    //             int coor_j = (j + offset_j + width) % width;
 
-                if((bugs::h_grid + (coor_i * width + coor_j))->x > .9) nb_neighbors++;
-            }
-        }
-        return nb_neighbors;
-    }
+    //             if((bugs::h_grid + (coor_i * width + coor_j))->x > .9) nb_neighbors++;
+    //         }
+    //     }
+    //     return nb_neighbors;
+    // }
 
 
     void imp_Bugs() {
 		int i, j;
-		for (i = 0; i < gbl::SCREEN_Y; i++)
+		for (i = 0; i < gbl::SCREEN_Y; i++){
 			for (j = 0; j < gbl::SCREEN_X; j++)
 			{
                 float4* cell = bugs::h_grid + (i * gbl::SCREEN_X + j);
 
-                //update environnement
-				int nb_neighbors = count_neighbors(i, j, gbl::SCREEN_X, gbl::SCREEN_Y);
+                //update values
+				int nb_neighbors = bugs::count_neighbors(i, j, bugs::h_grid, gbl::SCREEN_X, gbl::SCREEN_Y, h_params.RANGE);
                 if(bugs::isAlive(cell)){
                     if(h_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= h_params.SURVIVE_HIGH){}
                     else{bugs::killCell(cell);}
@@ -181,20 +200,8 @@ namespace cpu{
                     if(h_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= h_params.BIRTH_HIGH){bugs::aliveCell(cell);}
                     else{}
                 }
-
-                
-
-                // //update color
-                // if(bugs::isAlive(cell)){
-                //     p->x = h_params.col_alive.x;p->y = h_params.col_alive.y;p->z = h_params.col_alive.z;
-                // }
-                // else{
-                //     p->x = h_params.col_dead.x;p->y = h_params.col_dead.y;p->z = h_params.col_dead.z;          
-                // }
-				// p->w = 1.0f;
-
-
 			}
+        }
 	}
 
 }//end namespace cpu
@@ -207,6 +214,8 @@ namespace gpu{
 	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 
+        //not possible to fetch previous grid because it was cleaned
+        //checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
         gridSwap = false;
         gbl::display = imp_Bugs;
     }
@@ -226,6 +235,7 @@ namespace gpu{
     }
 
 
+
     __global__ void kernelBugs(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
@@ -242,11 +252,22 @@ namespace gpu{
 		    int j = index - i * SCREENX;
 
 			//new cell
+            float4* cellOld = gridOld + (i * SCREENX + j);
             float4* cellNew = gridNew + (i * SCREENX + j);
+            
             //compute alive in neightborhood
-
-            //if ... cell new = ...
-			
+            int nb_neighbors = bugs::count_neighbors(i, j, gridOld, SCREENX, SCREENY, d_params.RANGE);
+            
+            if(bugs::isAlive(cellOld)){
+                if(d_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= d_params.SURVIVE_HIGH)
+                    {bugs::aliveCell(cellNew);}
+                else{bugs::killCell(cellNew);}
+            }
+            else{ //if no cel, does it birth ?
+                if(d_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= d_params.BIRTH_HIGH)
+                    {bugs::aliveCell(cellNew);}
+                else{bugs::killCell(cellNew);}
+            }
 		}
 	}
 
