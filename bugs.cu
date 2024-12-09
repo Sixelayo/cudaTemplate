@@ -23,12 +23,12 @@ namespace bugs{
     __device__ __host__ inline void aliveCell(float4* cell){
         cell->x = 1.0f;
         cell->y = 1.0f;
-        cell->z = 1.0f;
+        cell->z = 0.0f;
     }
     __device__ __host__ inline void killCell(float4* cell){
         cell->x = 0.0f;
         cell->y = 0.0f;
-        cell->z = 0.0f;
+        cell->z = 1.0f;
     }
     __device__ __host__ inline bool isAlive(float4* cell){
         return (cell->x > 0.9);
@@ -93,6 +93,10 @@ struct Param {
     int SURVIVE_HIGH;
     int BIRTH_LOW;
     int BIRTH_HIGH;
+
+    //collor settings
+    float live_decay_fac;
+    float dead_decay_fac;
 
 
 };
@@ -260,13 +264,18 @@ namespace gpu{
             
             if(bugs::isAlive(cellOld)){
                 if(d_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= d_params.SURVIVE_HIGH)
-                    {bugs::aliveCell(cellNew);}
+                    //{bugs::aliveCell(cellNew);}
+                    {*cellNew=*cellOld;
+                    cellNew->y*=d_params.live_decay_fac;}
                 else{bugs::killCell(cellNew);}
             }
             else{ //if no cel, does it birth ?
                 if(d_params.BIRTH_LOW <= nb_neighbors && nb_neighbors <= d_params.BIRTH_HIGH)
                     {bugs::aliveCell(cellNew);}
-                else{bugs::killCell(cellNew);}
+                else
+                    //{bugs::killCell(cellNew);}
+                    {*cellNew = *cellOld;
+                    cellNew->z*=d_params.live_decay_fac;}
             }
 		}
 	}
@@ -278,7 +287,7 @@ namespace gpu{
 
         //grid swapping 1=>2 / 2=>1
         float4* oldgrid, *newgrid;
-        if(gridSwap){
+        if(!gridSwap){
             oldgrid = bugs::d_grid1;
             newgrid = bugs::d_grid2;
         } else{
@@ -308,6 +317,15 @@ namespace wdw{
         ImGui::InputInt("SURVIVE_HIGH", &h_params.SURVIVE_HIGH);
         ImGui::InputInt("BIRTH_LOW", &h_params.BIRTH_LOW);
         ImGui::InputInt("BIRTH_HIGH", &h_params.BIRTH_HIGH);
+
+        if (ImGui::TreeNode("Colors management"))
+        {
+            ImGui::SliderFloat("live decay fac", &h_params.live_decay_fac, 0.0f, 1.0f);
+            ImGui::SliderFloat("dead decay fac", &h_params.dead_decay_fac, 0.0f, 1.0f);
+
+            ImGui::TreePop();
+        }
+        
 
         if (ImGui::TreeNode("Presets"))
         {
@@ -487,6 +505,8 @@ int main(void){
         //color control
         h_params.col_dead = MyCol(0.1f, 0.1f, 0.1f, 1.0f);
         h_params.col_alive = MyCol(0.3f, 0.4f, 0.3f, 1.0f);
+        h_params.live_decay_fac = 0.9;
+        h_params.dead_decay_fac = 0.9;
 
         //framerate
         gbl::max_fps = 20;
