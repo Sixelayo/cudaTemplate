@@ -7,6 +7,8 @@
 //mandatory forward declaration
 namespace wdw{
     void automataParam();
+    static int spawnProb = 50;
+    static bool withInit = true;
 }
 namespace gbl{
     int max_fps;
@@ -99,8 +101,6 @@ struct Param {
     //collor settings
     float live_decay_fac;
     float dead_decay_fac;
-
-
 };
 Param h_params;
 __constant__ Param d_params;
@@ -116,15 +116,15 @@ namespace preset{
 
     void random_config(){
         for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
-            if(0 ==rand()%2){
+            if(rand()%100< wdw::spawnProb){
                 bugs::h_grid1[i].x = 1.0;
                 bugs::h_grid1[i].y = 1.0;
-                bugs::h_grid1[i].z = 1.0;
+                bugs::h_grid1[i].z = 0.0;
                 bugs::h_grid1[i].w = 1.0;
             } else{
                 bugs::h_grid1[i].x = 0.0;
                 bugs::h_grid1[i].y = 0.0;
-                bugs::h_grid1[i].z = 0.0;
+                bugs::h_grid1[i].z = 1.0;
                 bugs::h_grid1[i].w = 1.0;
             }
         }
@@ -134,6 +134,32 @@ namespace preset{
             bugs::gridSwap = false;
         }
     }
+
+    void random_rect(){
+        int i, j;
+		for (i = 0; i < gbl::SCREEN_Y; i++){
+			for (j = 0; j < gbl::SCREEN_X; j++)
+			{                
+                float4* cell = bugs::h_grid1 + (i * gbl::SCREEN_X + j);
+                float ival = (float)i/gbl::SCREEN_Y;
+                float jval = (float)j/gbl::SCREEN_X;
+                if(0.4 < ival && ival < 0.6 && 0.4 < jval && jval < 0.6){
+                    if(rand()%100< wdw::spawnProb){
+                        bugs::aliveCell(cell);
+                    } 
+                    else bugs::killCell(cell);    
+                }
+                else bugs::killCell(cell);
+
+            }
+        }
+        if(gbl::mode == GPU_MODE){
+            //send grid to gpu
+            checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid1, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
+            bugs::gridSwap = false;
+        }
+    }
+
     void clear_all(){
         for(int i=0; i < gbl::SCREEN_X * gbl::SCREEN_Y; i++){
             bugs::h_grid1[i].x = 0.0f;
@@ -149,10 +175,146 @@ namespace preset{
 
     void game_of_life(){
         set_preset(1,3,4,3,3);
+        if(wdw::withInit){
+            wdw::spawnProb = 75;
+            gbl::max_fps = 20;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            random_rect();
+        }
     }
     void bugs(){
         set_preset(5,34,58,34,45);
+        if(wdw::withInit){
+            wdw::spawnProb = 50;
+            gbl::max_fps = 60;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            random_config();
+        }
     }
+    void blob(){
+        set_preset(4,20,30,20,35);
+        if(wdw::withInit){
+            wdw::spawnProb = 50;
+            gbl::max_fps = 60;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            random_rect();
+        }
+    }
+    void life_without_death(){
+        set_preset(1,1,9,3,3);
+        if(wdw::withInit){
+            wdw::spawnProb = 3;
+            gbl::max_fps = 30;
+
+            h_params.live_decay_fac = 0.99;
+            h_params.dead_decay_fac = 0.9;
+            random_rect();
+        }
+    }
+    void maze(){
+        set_preset(1,3,3,1,5);
+        if(wdw::withInit){
+            wdw::spawnProb = 100;
+            gbl::max_fps = 10;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            //clear_all();
+            random_rect();
+        }
+    }
+    void mazectric(){
+        set_preset(1,3,3,1,4);
+        if(wdw::withInit){
+            wdw::spawnProb = 10;
+            gbl::max_fps = 10;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            //clear_all();
+            random_rect();
+        }
+    }
+
+    void fake_diamoeba(){ //missing S3
+        set_preset(1,5,8,5,8);
+        if(wdw::withInit){
+            wdw::spawnProb = 80;
+            gbl::max_fps = 10;
+
+            h_params.live_decay_fac = 0.99;
+            h_params.dead_decay_fac = 0.99;
+            //clear_all();
+            random_config();
+        }
+    }
+    void seeds(){ //missing S3
+        set_preset(1,0,0,2,2);
+        if(wdw::withInit){
+            wdw::spawnProb = 70;
+            gbl::max_fps = 10;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            //clear_all();
+            random_config();
+        }
+    }
+    void losange(){ //missing S3
+        set_preset(1,5,7,3,8);
+        if(wdw::withInit){
+            wdw::spawnProb = 75;
+            gbl::max_fps = 120;
+
+            h_params.live_decay_fac = 0.9;
+            h_params.dead_decay_fac = 0.9;
+            //clear_all();
+            random_rect();
+        }
+    }
+    void stars(){ //missing S3
+        set_preset(1,3,3,5,8);
+        if(wdw::withInit){
+            wdw::spawnProb = 40;
+            gbl::max_fps = 5;
+
+            h_params.live_decay_fac = 0.99;
+            h_params.dead_decay_fac = 0.99;
+            //clear_all();
+            random_config();
+        }
+    }
+    void vote(){ //missing S3
+        set_preset(1,4,8,5,8);
+        if(wdw::withInit){
+            wdw::spawnProb = 50;
+            gbl::max_fps = 50;
+
+            h_params.live_decay_fac = 0.99;
+            h_params.dead_decay_fac = 0.99;
+            //clear_all();
+            random_config();
+        }
+    }
+    void crystals(){ //missing S3
+        set_preset(1,2,2,2,2);
+        if(wdw::withInit){
+            wdw::spawnProb = 75;
+            gbl::max_fps = 15;
+
+            h_params.live_decay_fac = 0.99;
+            h_params.dead_decay_fac = 0.99;
+            //clear_all();
+            random_config();
+        }
+    }
+
 }//end namespace prs
 
 
@@ -190,7 +352,7 @@ namespace cpu{
                 if(bugs::isAlive(cellOld)){
                     if(h_params.SURVIVE_LOW <= nb_neighbors && nb_neighbors <= h_params.SURVIVE_HIGH){ //stays alive
                         *cellNew=*cellOld;
-                        //cellNew->y*=h_params.live_decay_fac;
+                        cellNew->y*=h_params.live_decay_fac;
                     }
                     else{ // dies
                         bugs::killCell(cellNew);
@@ -202,7 +364,7 @@ namespace cpu{
                     }
                     else{ //stay dead
                         *cellNew = *cellOld;
-                        //cellNew->z*=h_params.live_decay_fac;
+                        cellNew->z*=h_params.live_decay_fac;
                     }
                 }
 			}
@@ -247,9 +409,9 @@ namespace gpu{
 		if (index < SCREENX * SCREENY) {
             //access constant memory once per thread !
             Param t_params = d_params;
-            float scale = t_params.scale;
-            float sx = t_params.mx;
-            float sy = t_params.my;
+            //float scale = t_params.scale;
+            //float sx = t_params.mx;
+            //float sy = t_params.my;
 
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
@@ -307,11 +469,20 @@ namespace gpu{
 }//end namespace gpu
 
 namespace wdw{
+    static void HelpMarker(const char* desc){
+        ImGui::TextDisabled("(?)");
+        if (ImGui::BeginItemTooltip())
+        {
+            ImGui::PushTextWrapPos(ImGui::GetFontSize() * 35.0f);
+            ImGui::TextUnformatted(desc);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+
     void automataParam(){
         ImGui::Begin("Celular automata");
 
-        ImGui::InputInt("max iter/frame", &gbl::max_fps);
-        ImGui::NewLine();
 
         ImGui::InputInt("RANGE", &h_params.RANGE);
         ImGui::InputInt("SURVIVE_LOW", &h_params.SURVIVE_LOW);
@@ -319,6 +490,10 @@ namespace wdw{
         ImGui::InputInt("BIRTH_LOW", &h_params.BIRTH_LOW);
         ImGui::InputInt("BIRTH_HIGH", &h_params.BIRTH_HIGH);
 
+        ImGui::NewLine();
+
+        ImGui::SeparatorText("Advanced parameters");
+        ImGui::InputInt("max iter/frame", &gbl::max_fps);
         if (ImGui::TreeNode("Colors management"))
         {
             ImGui::SliderFloat("live decay fac", &h_params.live_decay_fac, 0.0f, 1.0f);
@@ -327,20 +502,54 @@ namespace wdw{
             ImGui::TreePop();
         }
         
-
-        if (ImGui::TreeNode("Presets"))
+        ImGui::SeparatorText("Presets");
         {
+            ImGui::Checkbox("Pre choosen config", &withInit);
+            ImGui::SameLine(); HelpMarker(
+                "If checked (recommanded), overide framerate\n"
+                "and set grid to a relevant initial configuration\n"
+                "when selecting a preset\n"
+                "Disable to keep all other parameter\n"
+                "when changing preset");
+
+            ImGui::BeginChild("ChildL", ImVec2(ImGui::GetContentRegionAvail().x, 150), ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
+
             if(ImGui::Button("Conway's Game of life")) preset::game_of_life();
             if(ImGui::Button("bugs")) preset::bugs();
+            if(ImGui::Button("blob")) preset::blob();
+            if(ImGui::Button("life without death")) preset::life_without_death();
+            if(ImGui::Button("maze")) preset::maze();
+            if(ImGui::Button("mazectric")) preset::mazectric();
+            if(ImGui::Button("fake diamoeba")) preset::fake_diamoeba();ImGui::SameLine(); HelpMarker(
+                "missing the S3 from proper diamoeba");
+            if(ImGui::Button("seed")) preset::seeds();
+            if(ImGui::Button("losange")) preset::losange();
+            if(ImGui::Button("stars")) preset::stars();
+            if(ImGui::Button("vote")) preset::vote();
+            if(ImGui::Button("crystals")) preset::crystals();
 
-            ImGui::TreePop();
+             ImGui::EndChild();
         }
-        if (ImGui::TreeNode("Options"))
+        
+       
+        ImGui::SeparatorText("Options");
         {
             if(ImGui::Button("clear all")) preset::clear_all();
-            if(ImGui::Button("random config")) preset::random_config();
 
-            ImGui::TreePop();
+            ImGui::PushItemWidth(65);
+            ImGui::DragInt("%spawn", &spawnProb, 1, 0, 100, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+            ImGui::PopItemWidth();
+            ImGui::SameLine(); HelpMarker(
+                "The spawn threshold when initiating grid\n"
+                "with a random configuration using the \n"
+                "following buttons.");
+            if(ImGui::Button("random config")) preset::random_config();
+            ImGui::SameLine(); HelpMarker(
+                "Set the grid to a random configuration");
+            if(ImGui::Button("random rect")) preset::random_rect();
+            ImGui::SameLine(); HelpMarker(
+                "Clear the grid, and set the 1/5 center\n"
+                "rectangle to a random configuration");
         }
 
 
@@ -508,6 +717,7 @@ int main(void){
         h_params.col_alive = MyCol(0.3f, 0.4f, 0.3f, 1.0f);
         h_params.live_decay_fac = 0.9;
         h_params.dead_decay_fac = 0.9;
+
 
         //framerate
         gbl::max_fps = 20;
