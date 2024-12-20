@@ -408,7 +408,7 @@ namespace gpu{
             //float sy = t_params.my;
 
 
-            //deduce i, j (pixel coordinate) from threadIdx, blockIdx ...
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx 
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
 

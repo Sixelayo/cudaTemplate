@@ -1,4 +1,6 @@
-# current
+# List of .cu files
+
+> Press w at any point to show / hide additional windows
 
 ## julia
 
@@ -12,12 +14,15 @@
 
 ## ray marching
 
+- everything asked
+- a fixed number of spheres are always loaded into memory
+- you can limit the number of sphere displayed or regenerate random spheres
 
 ## bugs 
 
 ### functionalities & remarks
 
-- everything asked (TODO vérifier que c'est vrai quand même)
+- everything asked except shared memory TODO
 - Big confusion : between standard notation : is a cell its own neighbor ? (online ressources uses different convention)
 - you can freely resize window in CPU or GPU mode (but grid state is'nt saved)
 - cells are stored as float4 (and not boolean) to allow easier implementation of color variation.
