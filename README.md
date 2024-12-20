@@ -1,3 +1,8 @@
+# generic remarks
+
+- The whole architecture of passing a Param Struct to gpu could be reworked as it was made early wihtout optimisation knowledge
+
+
 # List of .cu files
 
 > Press w at any point to show / hide additional windows
@@ -17,6 +22,15 @@
 - everything asked
 - a fixed number of spheres are always loaded into memory
 - you can limit the number of sphere displayed or regenerate random spheres
+- you add ambient light color and intensity
+- you can move camera holding left click
+
+- sadly we can't used constant memory as const ptr (well it's nonsens the only situation where it usefull is performance test betweet constant and global memory). This force ugly code duplication.
+- I couldn't notice any performance difference between constant and global memory  on my gtx980. This was to be expected.
+
+# todo
+
+- uses stream
 
 ## bugs 
 

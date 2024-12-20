@@ -36,11 +36,12 @@ struct Sphere {
 	float r, g, b;
 	float radius;
 	float x, y, z;
+    __host__ __device__ Sphere(){}
 	__host__ __device__ Sphere(float r, float g, float b, float rad, float x, float y, float z) : r(r), g(g), b(b), radius(rad), x(x),y(y),z(z){}
 
-	__host__ __device__ float hit(float cx, float cy, float* sh) const {
-		float dx = cx - x;
-		float dy = cy - y;
+	__host__ __device__ float hit(float cx, float cy, float* sh, float ox, float oy) const {
+		float dx = ox + cx - x;
+		float dy = oy + cy - y;
 		float dz2 = radius * radius - dx * dx - dy * dy;
 		if (dz2 > 0) {
 			float dz = sqrtf(dz2);
@@ -57,9 +58,11 @@ namespace rtc{
 
     //global variables
     static int max_nb_sphere = 500;
-    static int displayed_sphere_count = 10;
+    static bool use_cst_mem = false;
     Sphere* h_spheres;
     Sphere* d_spheres;
+    __constant__ Sphere cm_spheres[500]; 
+    //const Sphere* gpuSpheres; //torm
 
 
     inline float rndf(float min, float max) {
@@ -82,7 +85,10 @@ namespace rtc{
 
             h_spheres[i] = Sphere(r, g, b, radius, x, y, z);
         }
-        checkCudaErrors( cudaMemcpy(d_spheres, (void**)&h_spheres, max_nb_sphere*sizeof(Sphere), cudaMemcpyHostToDevice) );
+        checkCudaErrors( cudaMemcpy(d_spheres, h_spheres, max_nb_sphere*sizeof(Sphere), cudaMemcpyHostToDevice) );
+        //gpuSpheres = d_spheres; //set for swap with const todo rm
+        checkCudaErrors( cudaMemcpyToSymbol(cm_spheres, h_spheres, 500*sizeof(Sphere)) );//todo here
+        cudaDeviceSynchronize();//toro rm
     }
     void unloadSpheres(){
         checkCudaErrors( cudaFreeHost(h_spheres) );
@@ -106,6 +112,8 @@ struct Param {
     float scale;
     float mx, my; //mousepose
     Complex offset;
+
+    int displayCount;
 
     MyCol ambientLight;
     float ambient_intensity;
@@ -144,10 +152,10 @@ namespace cpu{
                 p->z = 0.0f;
                 p->w = 1.0f;
                 float dmin = -INF + 30;
-                for (int k = 0; k < rtc::displayed_sphere_count; k++) {
+                for (int k = 0; k < h_params.displayCount; k++) {
                     float sha = 0;
                     const Sphere& sphere = rtc::h_spheres[k];
-                    float ds = sphere.hit(x, y, &sha);
+                    float ds = sphere.hit(x, y, &sha, h_params.mx, h_params.my);
                     if (ds > dmin) {
                         dmin = ds;
                         float ambr = h_params.ambientLight.x;
@@ -189,34 +197,86 @@ namespace gpu{
 
 
 
-    __global__ void kernelRayTracer(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
+    __global__ void kernelRayTracer(float4* d_pixels, const Sphere* spheres, int SCREENX, int SCREENY) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < SCREENX * SCREENY) {
             //access constant memory once per thread !
             Param t_params = d_params;
-            //float scale = t_params.scale;
-            //float sx = t_params.mx;
-            //float sy = t_params.my;
-
 
             //deduce i, j (pixel coordinate) from threadIdx, blockIdx 
             int i = index / SCREENX;
 		    int j = index - i * SCREENX;
 
+            float x = (float)(t_params.scale * (j - SCREENX / 2));
+            float y = (float)(t_params.scale * (i - SCREENY / 2));
+            float4* p = d_pixels + (i * SCREENX + j);
+            // default: black
+            p->x = 0.0f; p->y = 0.0f; p->z = 0.0f; p->w = 1.0f; 
+            float dmin = -INF + 30;
+            for (int k = 0; k < t_params.displayCount; k++) {
+                float sha = 0;
+                const Sphere& sphere = spheres[k];
+                float ds = sphere.hit(x, y, &sha, t_params.mx, t_params.my);
+                if (ds > dmin) {
+                    dmin = ds;
+                    float ambr = t_params.ambientLight.x;
+                    float ambg = t_params.ambientLight.y;
+                    float ambb = t_params.ambientLight.z;
+                    float ai = t_params.ambient_intensity;
+                    p->x = (ambr*ai) + (sha * sphere.r) * (1 - (ambr*ai));
+                    p->y = (ambg*ai) + (sha * sphere.g) * (1 - (ambg*ai));
+                    p->z = (ambb*ai) + (sha * sphere.b) * (1 - (ambb*ai));
+                }
+            }
+
         }
 	}
+
+    __global__ void kernelRayTracerCONSTANT(float4* d_pixels, int SCREENX, int SCREENY) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < SCREENX * SCREENY) {
+            //access constant memory once per thread !
+            Param t_params = d_params;
+
+            //deduce i, j (pixel coordinate) from threadIdx, blockIdx 
+            int i = index / SCREENX;
+		    int j = index - i * SCREENX;
+
+            float x = (float)(t_params.scale * (j - SCREENX / 2));
+            float y = (float)(t_params.scale * (i - SCREENY / 2));
+            float4* p = d_pixels + (i * SCREENX + j);
+            // default: black
+            p->x = 0.0f; p->y = 0.0f; p->z = 0.0f; p->w = 1.0f; 
+            float dmin = -INF + 30;
+            for (int k = 0; k < t_params.displayCount; k++) {
+                float sha = 0;
+                const Sphere& sphere = rtc::cm_spheres[k];
+                float ds = sphere.hit(x, y, &sha, t_params.mx, t_params.my);
+                if (ds > dmin) {
+                    dmin = ds;
+                    float ambr = t_params.ambientLight.x;
+                    float ambg = t_params.ambientLight.y;
+                    float ambb = t_params.ambientLight.z;
+                    float ai = t_params.ambient_intensity;
+                    p->x = (ambr*ai) + (sha * sphere.r) * (1 - (ambr*ai));
+                    p->y = (ambg*ai) + (sha * sphere.g) * (1 - (ambg*ai));
+                    p->z = (ambb*ai) + (sha * sphere.b) * (1 - (ambb*ai));
+                }
+            }
+
+        }
+	}
+
 
     void imp_RayTracer(){
         //initialisation
         int N = gbl::SCREEN_X * gbl::SCREEN_Y;
 		int M = 256;
 
-        //always swap from grid 1 to grid 2 and sawp pointers after
-
         //computation
-        //kernelRayTracer << <(N + M - 1) / M, M >> > (bugs::d_grid1, bugs::d_grid2, gbl::SCREEN_X, gbl::SCREEN_Y);
+        if(!rtc::use_cst_mem) kernelRayTracer << <(N + M - 1) / M, M >> > (gbl::d_pixels, rtc::d_spheres, gbl::SCREEN_X, gbl::SCREEN_Y);
+        else kernelRayTracerCONSTANT << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y);
 
-        //fecth grid from GPU to CPU and swap grid
         checkKernelErrors();
 		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
     }
@@ -248,7 +308,7 @@ namespace wdw{
         ImGui::SeparatorText("params : ");
         ImGui::InputInt("loaded sphere", &rtc::max_nb_sphere);
         ImGui::SameLine(); HelpMarker("the number of sphere loaded into memory");
-        ImGui::SliderInt("displayed spheres", &rtc::displayed_sphere_count, 1, rtc::max_nb_sphere); //todo helmarker
+        ImGui::SliderInt("displayed spheres", &h_params.displayCount, 1, rtc::max_nb_sphere); //todo helmarker
         ImGui::SameLine(); HelpMarker("the number that will be displayed");
         if(ImGui::Button("regenerate")){
             gbl::paused = true;
@@ -287,9 +347,6 @@ namespace wdw{
                 HelpMarker("version 1 : each trade <=> 1 pixel");
                 break;
             case 1:
-                HelpMarker("version 2 : sphere array in GPU memory");
-                break;
-            case 2:
                 ImGui::SetNextItemWidth(20); 
                 ImGui::InputInt("stream count :", &gbl::value, 0, 0);
                 ImGui::SameLine();
@@ -297,6 +354,14 @@ namespace wdw{
                 break;
             default: break;
             }
+        ImGui::Checkbox("use constant memory", &rtc::use_cst_mem);
+        //we can't do this bc we can't treat cm as pointer
+        // if ... rtc::gpuSpheres = rtc::use_cst_mem ? (const Sphere*)rtc::cm_spheres : rtc::d_spheres;
+
+
+
+
+        ImGui::SameLine(); HelpMarker("version 2 : sphere array in GPU memory");
     }
 }//end namespace wdw
 
@@ -429,9 +494,12 @@ int main(void){
         h_params.mx = 0.0f;
         h_params.my = 0.0f;
         h_params.offset = Complex(0.0f, 0.0f);
+
+
         
         rtc::loadSpheres();
         h_params.ambientLight = MyCol{rtc::PARAM_ambient};
+        h_params.displayCount = 10;
     }
 
     /* Initialize callback*/
