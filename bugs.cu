@@ -17,7 +17,6 @@ namespace gpu{
 }
 
 namespace bugs{
-    bool gridSwap;
     float4* h_grid1;
     float4* h_grid2;
     float4* d_grid1;
@@ -131,7 +130,6 @@ namespace preset{
         if(gbl::mode == GPU_MODE){
             //send grid to gpu
             checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid1, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
-            bugs::gridSwap = false;
         }
     }
 
@@ -156,7 +154,6 @@ namespace preset{
         if(gbl::mode == GPU_MODE){
             //send grid to gpu
             checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid1, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
-            bugs::gridSwap = false;
         }
     }
 
@@ -169,7 +166,6 @@ namespace preset{
         }
         if(gbl::mode == GPU_MODE){
             checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid1, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) ); //get pixels values from gpu
-            bugs::gridSwap = false;
         }
     }
 
@@ -324,7 +320,6 @@ namespace cpu{
     void init(){
         bugs::h_grid1 = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
         bugs::h_grid2 = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
-        bugs::gridSwap = false;
         gbl::display = imp_Bugs;
     }
     void clean(){
@@ -384,7 +379,6 @@ namespace gpu{
 
         //ideally transfer active grid in cpu to gpu but due to architecture not possible to fetch previous grid because it was cleaned
         //checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
-        bugs::gridSwap = false;
         gbl::display = imp_Bugs;
     }
     void clean(){
@@ -448,25 +442,20 @@ namespace gpu{
         int N = gbl::SCREEN_X * gbl::SCREEN_Y;
 		int M = 256;
 
-        //grid swapping 1=>2 / 2=>1
-        float4* oldgrid, *newgrid;
-        if(!bugs::gridSwap){
-            oldgrid = bugs::d_grid1;
-            newgrid = bugs::d_grid2;
-        } else{
-            oldgrid = bugs::d_grid2;
-            newgrid = bugs::d_grid1;
-        }
-        bugs::gridSwap = !bugs::gridSwap;
+        //always swap from grid 1 to grid 2 and sawp pointers after
 
         //computation
-        kernelBugs << <(N + M - 1) / M, M >> > (oldgrid, newgrid, gbl::SCREEN_X, gbl::SCREEN_Y);
+        kernelBugs << <(N + M - 1) / M, M >> > (bugs::d_grid1, bugs::d_grid2, gbl::SCREEN_X, gbl::SCREEN_Y);
 
-        //fecth grid from GPU to CPU
-        checkCudaErrors( cudaMemcpy(bugs::h_grid1, newgrid, N * sizeof(float4), cudaMemcpyDeviceToHost));
+        //fecth grid from GPU to CPU and swap grid
+        checkCudaErrors( cudaMemcpy(bugs::h_grid1, bugs::d_grid2, N * sizeof(float4), cudaMemcpyDeviceToHost));
+        std::swap(bugs::d_grid1, bugs::d_grid2);
     }
 
 }//end namespace gpu
+
+
+
 
 namespace wdw{
     static void HelpMarker(const char* desc){
@@ -581,7 +570,28 @@ namespace wdw{
 
         ImGui::End();
     }
+
+    void wdw_additional(){
+        ImGui::SeparatorText("GPU mode");
+        static int current_gpu_mode = 0;
+        const char* items[] = { "default", "shared"};
+
+        if (ImGui::Combo("Combo", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
+            switch (current_gpu_mode)
+            {
+            //TODO CHANGE CALLBACK
+            case 0: /* gbl::display = gpu::imp_Bugs_default; */ break;
+            case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
+            default: break;
+            }
+        }
+
+        ImGui::SameLine(); HelpMarker(
+                    "refer to readme.md for additional information\n"
+                    "on how shared mode works");
+    }
 }//end namespace wdw
+
 
 
 

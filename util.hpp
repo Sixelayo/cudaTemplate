@@ -83,6 +83,7 @@ namespace gbl{
 
 
 void clean(); void init();
+namespace wdw{ void wdw_additional();}
 namespace utl{
     
 void initImGui(GLFWwindow* window){
@@ -127,6 +128,10 @@ void wdw_info(int mode, int sx, int sy, int fps){
 
     ImGui::Text("Current Window size : %d x %d", sx, sy);
     ImGui::Text("FPS : %d", fps);
+
+    if(mode == GPU_MODE){
+        wdw::wdw_additional();
+    }
     ImGui::End();
 }
 
