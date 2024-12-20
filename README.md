@@ -29,7 +29,7 @@
 - I couldn't notice any performance difference between constant and global memory  on my gtx980. This was to be expected.
 - constant memory limited to 64kb. I've limited sphere count to 500 when using constant memory
 - technically for performance I should've always duplicate code and use callbacks but I haven't done that for readability and cleaner code (esp for streams / constant memory), I preferred boolean switch
-- I noticed a 30% performance drop when using stream. This is very likely because the kernel is computationally light and thus paralellization is irrelevant"
+- We can notice a small improvement when using streams. (35 -> 40 fps with 500 spheres) This is very likely because the kernel is computationally light and thus paralellization is almost irrelevant"
 
 # todo
 

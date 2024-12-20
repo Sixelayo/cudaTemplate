@@ -90,7 +90,6 @@ namespace rtc{
         }
         checkCudaErrors( cudaMemcpy(d_spheres, h_spheres, max_nb_sphere*sizeof(Sphere), cudaMemcpyHostToDevice) );
         checkCudaErrors( cudaMemcpyToSymbol(cm_spheres, h_spheres, SIZECONST*sizeof(Sphere)) ); //hardcoded
-        cudaDeviceSynchronize();//toro rm
     }
     void unloadSpheres(){
         checkCudaErrors( cudaFreeHost(h_spheres) );
@@ -238,8 +237,9 @@ namespace gpu{
 	}
 
     //unfortunately forced to use another kernel because can't use constant memomy as const ptr
-    __global__ void kernelRayTracerCONSTANT(float4* d_pixels, int SCREENX, int SCREENY, int start_pos =0) {
-		int index = threadIdx.x + blockIdx.x * blockDim.x + start_pos; //use start_pos when using multiples streams
+    __global__ void kernelRayTracerCONSTANT(float4* d_pixels, int SCREENX, int SCREENY, int start_pos = 0) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x+start_pos; 
+        //use start_pos when using multiples streams
 		if (index < SCREENX * SCREENY) {
             //access constant memory once per thread !
             Param t_params = d_params;
@@ -299,19 +299,18 @@ namespace gpu{
 
                 // Launch kernel for this chunk
                 kernelRayTracerCONSTANT<<<(chunkSize + M - 1) / M, M, 0, rtc::stream[k]>>>(
-                    gbl::d_pixels + startIdx, gbl::SCREEN_X, gbl::SCREEN_Y, 0); //todo here startIdx instead of 1 MUST BE  REMOVE PARAM
+                    gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y, startIdx); //todo here startIdx instead of 1 MUST BE  REMOVE PARAM
                 
-                //cudaStreamSynchronize(rtc::stream[k]); //if not crash TODO
 
                 //checkKernelErrors();
                 //checkCudaErrors( ...)
 
-                std::cout << "\nstream k =  :" << k << "\n";
-                std::cout << "startIdx :" << startIdx << "\t";
-                std::cout << "endIdx :" << endIdx << "\t";
-                std::cout << "chunksize :" << chunkSize << "\t";
+                // std::cout << "\nstream k =  :" << k << "\n";
+                // std::cout << "startIdx :" << startIdx << "\t";
+                // std::cout << "endIdx :" << endIdx << "\t";
+                // std::cout << "chunksize :" << chunkSize << "\t";
 
-                cudaMemcpyAsync(gbl::pixels /*+ startIdx*/, gbl::d_pixels /*+ startIdx*/,
+                cudaMemcpyAsync(gbl::pixels + startIdx, gbl::d_pixels + startIdx,
                         chunkSize * sizeof(float4), cudaMemcpyDeviceToHost, rtc::stream[k]);
             }
         }
@@ -364,7 +363,7 @@ namespace wdw{
     void wdw_additional(){
         ImGui::SeparatorText("GPU mode");
         static int current_gpu_mode = 0;
-        const char* items[] = { "no", "changes", "here"};
+        const char* items[] = { "no chagnes", "here", "for now"};
 
         if (ImGui::Combo("##gpumode", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
@@ -416,9 +415,9 @@ namespace wdw{
             gbl::paused = false;
         }
         ImGui::SameLine(); HelpMarker("version 3 : streams for task parallelization\n"
-            "We notice a 30% performance drop when using streams\n"
+            "We can notice a small improvement when using streams. (35 -> 40 fps with 500 spheres)\n"
             "This is very likely because the kernel is computationally light\n"
-            "and thus paralellization is irrelevant");
+            "and thus paralellization is almost irrelevant");
     }
 }//end namespace wdw
 
