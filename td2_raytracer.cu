@@ -9,7 +9,6 @@ namespace wdw{
     void rayTracerParam();
 }
 namespace gbl{
-    static int value = 4;
 }
 namespace gpu{
 }
@@ -55,15 +54,19 @@ struct Sphere {
 namespace rtc{
     //colors (messy architectures because erm ... types compatibility)
     static float PARAM_ambient[4] = { 0.2f, 0.4f, 0.2f, 1.0f };
+    static int streamCount = 4;
 
     //global variables
     static int max_nb_sphere = 500;
     static bool use_cst_mem = false;
+    static bool use_streams = false;
     Sphere* h_spheres;
     Sphere* d_spheres;
-    __constant__ Sphere cm_spheres[500]; 
-    //const Sphere* gpuSpheres; //torm
+    const int SIZECONST = 400;
+    __constant__ Sphere cm_spheres[SIZECONST]; //hardcoded
 
+    //streams for stream implementation //improper implementation in term of architecture
+    cudaStream_t stream[16]; // array of N streams
 
     inline float rndf(float min, float max) {
         return min + ((float)(rand() % 10000) / 10000) * (max-min);
@@ -86,8 +89,7 @@ namespace rtc{
             h_spheres[i] = Sphere(r, g, b, radius, x, y, z);
         }
         checkCudaErrors( cudaMemcpy(d_spheres, h_spheres, max_nb_sphere*sizeof(Sphere), cudaMemcpyHostToDevice) );
-        //gpuSpheres = d_spheres; //set for swap with const todo rm
-        checkCudaErrors( cudaMemcpyToSymbol(cm_spheres, h_spheres, 500*sizeof(Sphere)) );//todo here
+        checkCudaErrors( cudaMemcpyToSymbol(cm_spheres, h_spheres, SIZECONST*sizeof(Sphere)) ); //hardcoded
         cudaDeviceSynchronize();//toro rm
     }
     void unloadSpheres(){
@@ -193,6 +195,9 @@ namespace gpu{
 
     void setDeviceParameters(const Param& params) {
         checkCudaErrors( cudaMemcpyToSymbol(d_params, &params, sizeof(Param)) );
+        //checkCudaErrors( cudaMemcpyToSymbolAsync(d_params, &params, sizeof(Param), 0, cudaMemcpyHostToDevice, rtc::stream[0]) );
+        //cudaMemcpyToSymbolAsync(d_data, &h_data, sizeof(int), 0, cudaMemcpyHostToDevice, stream);
+
     }
 
 
@@ -232,8 +237,9 @@ namespace gpu{
         }
 	}
 
-    __global__ void kernelRayTracerCONSTANT(float4* d_pixels, int SCREENX, int SCREENY) {
-		int index = threadIdx.x + blockIdx.x * blockDim.x;
+    //unfortunately forced to use another kernel because can't use constant memomy as const ptr
+    __global__ void kernelRayTracerCONSTANT(float4* d_pixels, int SCREENX, int SCREENY, int start_pos =0) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x + start_pos; //use start_pos when using multiples streams
 		if (index < SCREENX * SCREENY) {
             //access constant memory once per thread !
             Param t_params = d_params;
@@ -274,11 +280,41 @@ namespace gpu{
 		int M = 256;
 
         //computation
-        if(!rtc::use_cst_mem) kernelRayTracer << <(N + M - 1) / M, M >> > (gbl::d_pixels, rtc::d_spheres, gbl::SCREEN_X, gbl::SCREEN_Y);
-        else kernelRayTracerCONSTANT << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y);
+        if(!rtc::use_streams){
+            if(!rtc::use_cst_mem) kernelRayTracer << <(N + M - 1) / M, M >> > (gbl::d_pixels, rtc::d_spheres, gbl::SCREEN_X, gbl::SCREEN_Y);
+            else kernelRayTracerCONSTANT << <(N + M - 1) / M, M >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y);
 
-        checkKernelErrors();
-		checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
+            checkKernelErrors();
+		    checkCudaErrors( cudaMemcpy(gbl::pixels, gbl::d_pixels, N * sizeof(float4), cudaMemcpyDeviceToHost) ); //get pixels values from gpu
+        }
+        //no implementation for stream + gbl mem bc useless
+        else{
+            int workPerStream = (N + rtc::streamCount - 1) / rtc::streamCount; // Divide work equally across streams
+            for (int k=0;k<rtc::streamCount;k++) { // do 1/Nth of the work
+                int startIdx = k * workPerStream;
+                int endIdx = min(N, (k + 1) * workPerStream); // Ensure last stream doesn't exceed bounds
+                int chunkSize = endIdx - startIdx;
+                
+                //kernelRayTracerCONSTANT << <(N + M - 1) / M, M, 0, rtc::stream[k] >> > (gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y);
+
+                // Launch kernel for this chunk
+                kernelRayTracerCONSTANT<<<(chunkSize + M - 1) / M, M, 0, rtc::stream[k]>>>(
+                    gbl::d_pixels + startIdx, gbl::SCREEN_X, gbl::SCREEN_Y, 0); //todo here startIdx instead of 1 MUST BE  REMOVE PARAM
+                
+                //cudaStreamSynchronize(rtc::stream[k]); //if not crash TODO
+
+                //checkKernelErrors();
+                //checkCudaErrors( ...)
+
+                std::cout << "\nstream k =  :" << k << "\n";
+                std::cout << "startIdx :" << startIdx << "\t";
+                std::cout << "endIdx :" << endIdx << "\t";
+                std::cout << "chunksize :" << chunkSize << "\t";
+
+                cudaMemcpyAsync(gbl::pixels /*+ startIdx*/, gbl::d_pixels /*+ startIdx*/,
+                        chunkSize * sizeof(float4), cudaMemcpyDeviceToHost, rtc::stream[k]);
+            }
+        }
     }
 
 }//end namespace gpu
@@ -328,7 +364,7 @@ namespace wdw{
     void wdw_additional(){
         ImGui::SeparatorText("GPU mode");
         static int current_gpu_mode = 0;
-        const char* items[] = { "version 1", "version 2", "version 3"};
+        const char* items[] = { "no", "changes", "here"};
 
         if (ImGui::Combo("##gpumode", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
@@ -347,21 +383,42 @@ namespace wdw{
                 HelpMarker("version 1 : each trade <=> 1 pixel");
                 break;
             case 1:
-                ImGui::SetNextItemWidth(20); 
-                ImGui::InputInt("stream count :", &gbl::value, 0, 0);
-                ImGui::SameLine();
-                HelpMarker("version 3 : streams for task parallelization");
+                //ImGui::SetNextItemWidth(20); 
+                //ImGui::InputInt("stream count :", &rtc::streamCount, 0, 0);
                 break;
             default: break;
             }
         ImGui::Checkbox("use constant memory", &rtc::use_cst_mem);
+        ImGui::SameLine(); HelpMarker("version 2 : sphere array in GPU memory");
         //we can't do this bc we can't treat cm as pointer
         // if ... rtc::gpuSpheres = rtc::use_cst_mem ? (const Sphere*)rtc::cm_spheres : rtc::d_spheres;
 
 
 
+        ImGui::SetNextItemWidth(25); 
+        if (rtc::use_streams) {
+            ImGui::InputInt("nb stream", &rtc::streamCount, 0, 0, ImGuiInputTextFlags_ReadOnly);
+        } else {
+            ImGui::InputInt("nb stream", &rtc::streamCount, 0, 0);
+        }
+        ImGui::SameLine(); HelpMarker("16 max");
+        if(rtc::streamCount > 16) rtc::streamCount = 16;
+        ImGui::SameLine();
 
-        ImGui::SameLine(); HelpMarker("version 2 : sphere array in GPU memory");
+        if(ImGui::Checkbox("use streams memory", &rtc::use_streams)){
+            gbl::paused = true;
+            if(rtc::use_streams){
+                for (int k=0;k<rtc::streamCount;k++) cudaStreamCreate(&rtc::stream[k]);
+            }
+            else{
+                for (int k=0;k<rtc::streamCount;k++) cudaStreamDestroy(rtc::stream[k]);
+            }
+            gbl::paused = false;
+        }
+        ImGui::SameLine(); HelpMarker("version 3 : streams for task parallelization\n"
+            "We notice a 30% performance drop when using streams\n"
+            "This is very likely because the kernel is computationally light\n"
+            "and thus paralellization is irrelevant");
     }
 }//end namespace wdw
 
