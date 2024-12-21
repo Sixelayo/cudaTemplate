@@ -19,12 +19,15 @@
             "-o",
             "${fileDirname}\\exe\\${fileBasenameNoExtension}.exe",
             "-I./include/",
+            "-IO:/vcpkg/installed/x64-windows/include/",//change your own path
             "-L./lib/",
             "-lglfw3_mt",
             "-lopengl32",
             "-luser32",
             "-lgdi32",
             "-lshell32",
+            "-diag-suppress=20012" //prevent a shit ton of warning from showing up when including glm
+
             //"--verbose"
         ],
         "options": {

@@ -31,9 +31,6 @@
 - technically for performance I should've always duplicate code and use callbacks but I haven't done that for readability and cleaner code (esp for streams / constant memory), I preferred boolean switch
 - We can notice a small improvement when using streams. (35 -> 40 fps with 500 spheres) This is very likely because the kernel is computationally light and thus paralellization is almost irrelevant"
 
-# todo
-
-- uses stream
 
 ## bugs 
 
@@ -71,7 +68,6 @@
 ### TODO
 
 Mandatory
-- proprement implémentaiton gpu ne plus utiliser gridSwap
 - utiliser la shared memory pour lire tuile par tuile
 
 Optional things I would've had given infinite time :
@@ -83,6 +79,11 @@ Optional things I would've had given infinite time :
 - pause button
 
 
+## td4 nbody
 
+- I also adapted camera.c for glfw and plugged callback into my template file but things could be more way more clean
+- I rewrite a few things and now use a struct Body{} instead of raw global array.
 
-- seed growth
+## to convert :
+
+- process special keys to control nbody count
