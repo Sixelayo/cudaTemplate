@@ -81,9 +81,27 @@ Optional things I would've had given infinite time :
 
 ## td4 nbody
 
+- everything asked is present (TODO CHECK)
 - I also adapted camera.c for glfw and plugged callback into my template file but things could be more way more clean
+- I did not had time to properly reimplement camera controls
 - I rewrite a few things and now use a struct Body{} instead of raw global array.
+- you can view colors on particles (bade on position, or normalized speed)
 
-## to convert :
+## todo
 
-- process special keys to control nbody count
+
+- add camera contorl
+- 3 color mode
+    - default
+    - position
+    - normalized speed (lerp between c1 / c2)
+- q3
+
+
+# Other remarkss
+
+- left to do : VSCode task for automatic copile without debug option
+- the whole "param" architecture is a little messy as I've done it before the optimization class. I think the compiler probably gets rid of my messy buffering and loading the param struct but still I should've only used d_param and not t_param (per-thread copie of d_param which is constant memory ... when there are many access to d_param I should've use individual local variable and not the whole param structure)
+- understand the warning comming from glm which I've shut done with `"-diag-suppress=20012"`
+- `compute-sanitizer` command usefull for debugging cuda. It probably saved me hours of debugging by properly hightlighting the exact line in my code where there was a memory access whereas default crash only give you the line of the macro( useless)
+- I may be missing some `cudaDeviceSynchronice` that cause crash because I didn't check every click combination with UI. Also I did'nt enforce heavy user input validation aside from slider min / max which you can override with ctrl+click so that may cause crash

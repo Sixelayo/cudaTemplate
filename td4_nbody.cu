@@ -10,7 +10,7 @@
 
 
 #define TITLE "NBODY"
-#define MAXBODYCOUNT 1024
+
 
 //mandatory forward declaration
 namespace wdw{
@@ -23,8 +23,8 @@ namespace gpu{
 }
 
 struct Body{
-    float4 pos;
-    float4 vel;
+    float3 pos; 
+    float3 vel;
     float mass;
 };
 
@@ -34,10 +34,12 @@ namespace nbd{
     Body* d_bodies1;
     Body* d_bodies2;
 
-    float dpos = 1.0f;
+    static int MAXBODYCOUNT = 1024;
+    float dpos = 2.5f;
     float dvel = 0.0001f;
     static float minmass = 1.0f;
     static float maxmass = 5.0f;
+
 
     void randomBodies(Body* bodies, int bodycount){
         float x, y, z, r;
@@ -51,7 +53,7 @@ namespace nbd{
             body.pos.x = r*dpos*x;
             body.pos.y = r*dpos*y;
             body.pos.z = r*dpos*z;
-            body.pos.w = 1.0f;
+            //body.pos.w = 1.0f;
 
             //vel
             x = (2*((rand()%1000)/1000.0f)-1);
@@ -61,16 +63,32 @@ namespace nbd{
             body.vel.x = r*dvel*x;
             body.vel.y = r*dvel*y;
             body.vel.z = r*dvel*z;
-            body.vel.w = 1.0f;
+            //body.vel.w = 1.0f;
 
             //mass
             body.mass = minmass+(maxmass-minmass)*((rand()%1000)/1000.0f);
         }
     }
 
-    void updtBody(Body* body){
-
+    __host__ __device__ float3 add(const float3& a, const float3& b) {
+        return make_float3(a.x + b.x, a.y + b.y, a.z + b.z);
     }
+    __host__ __device__ float3 minus(const float3& a, const float3& b) {
+        return make_float3(a.x - b.x, a.y - b.y, a.z - b.z);
+    }
+    __host__ __device__ float3 multiply(float s, const float3& v) {
+        return make_float3(s * v.x, s * v.y, s * v.z);
+    }
+
+    __host__ __device__ inline float dist(const Body& b1, const Body& b2){
+        return sqrtf(   (b1.pos.x - b2.pos.x) * (b1.pos.x - b2.pos.x) +
+                        (b1.pos.y - b2.pos.y) * (b1.pos.y - b2.pos.y) +
+                        (b1.pos.z - b2.pos.z) * (b1.pos.z - b2.pos.z));
+    }
+    __host__ __device__ inline float length2(float3 v) {
+        return v.x * v.x + v.y * v.y + v.z * v.z;
+    }
+
 
 
 }
@@ -107,7 +125,9 @@ struct Param {
     Complex offset;
 
     //nbd
-    int nbBodies;
+    int nbBodies; //nb à afficher
+    float G;
+    float EPS2;
 };
 Param h_params;
 __constant__ Param d_params;
@@ -118,10 +138,8 @@ namespace cpu{
     void imp_NBody();
 
     void init(){
-        //bugs::h_grid1 = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
-        //bugs::h_grid2 = (float4*)malloc(gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4));
-        nbd::h_bodies1 = (Body*) malloc(MAXBODYCOUNT * sizeof(Body));
-        nbd::h_bodies2 = (Body*) malloc(MAXBODYCOUNT * sizeof(Body));
+        nbd::h_bodies1 = (Body*) malloc(nbd::MAXBODYCOUNT * sizeof(Body));
+        nbd::h_bodies2 = (Body*) malloc(nbd::MAXBODYCOUNT * sizeof(Body));
         gbl::display = imp_NBody;
     }
     void clean(){
@@ -129,37 +147,47 @@ namespace cpu{
         free(nbd::h_bodies2); nbd::h_bodies2 = nullptr;
     }
     void reinit(){
-        //bugs::h_grid1 = (float4*)realloc(bugs::h_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
-        //bugs::h_grid2 = (float4*)realloc(bugs::h_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4));
+        nbd::h_bodies1 = (Body*)realloc(nbd::h_bodies1, nbd::MAXBODYCOUNT * sizeof(Body));
+        nbd::h_bodies2 = (Body*)realloc(nbd::h_bodies2, nbd::MAXBODYCOUNT * sizeof(Body));
     }
 
 
     void imp_NBody() {
 		// your N-body algorithm here!
-        for (int i=0;i<h_params.nbBodies;i++)
-        {
-            nbd::updtBody(nbd::h_bodies1+i);
+        for (int i=0;i<h_params.nbBodies;i++){
+            float3 acc = {0.0f, 0.0f, 0.0f};
+
+            for (int j = 0; j < h_params.nbBodies; j++) {
+                if (i != j) { 
+                    float3 r = nbd::minus(nbd::h_bodies1[j].pos, nbd::h_bodies1[i].pos);
+                    float d = nbd::length2(r) + h_params.EPS2;  
+                    float factor = h_params.G * nbd::h_bodies1[j].mass / sqrtf(d * d * d);
+                    acc = nbd::add(acc, nbd::multiply(factor, r));
+                }
+            }
+            nbd::h_bodies2[i].pos = nbd::add(nbd::h_bodies1[i].pos, nbd::h_bodies1[i].vel);
+            nbd::h_bodies2[i].vel = nbd::add(nbd::h_bodies1[i].vel, acc);
         }
+
+        std::swap(nbd::h_bodies1, nbd::h_bodies2);
 	}
 
 }//end namespace cpu
 
 namespace gpu{
-    void imp_Bugs();
+    void imp_NBody();
 
     void init(){
-        // checkCudaErrors( cudaMallocHost((void**) &bugs::h_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)));
-	    // checkCudaErrors( cudaMalloc((void**)&bugs::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-	    // checkCudaErrors( cudaMalloc((void**)&bugs::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
+        checkCudaErrors( cudaMallocHost((void**) &nbd::h_bodies1, nbd::MAXBODYCOUNT * sizeof(Body)) );
+	    checkCudaErrors( cudaMalloc((void**)&nbd::d_bodies1, nbd::MAXBODYCOUNT * sizeof(Body)) );
+	    checkCudaErrors( cudaMalloc((void**)&nbd::d_bodies2, nbd::MAXBODYCOUNT * sizeof(Body)) );
 
-        //ideally transfer active grid in cpu to gpu but due to architecture not possible to fetch previous grid because it was cleaned
-        //checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
-        gbl::display = imp_Bugs;
+        gbl::display = imp_NBody;
     }
     void clean(){
-        // checkCudaErrors( cudaFreeHost(bugs::h_grid1));
-	    // checkCudaErrors( cudaFree(bugs::d_grid1) );
-	    // checkCudaErrors( cudaFree(bugs::d_grid2) );
+        checkCudaErrors( cudaFreeHost(nbd::h_bodies1));
+	    checkCudaErrors( cudaFree(nbd::d_bodies1) );
+	    checkCudaErrors( cudaFree(nbd::d_bodies2) );
 
     }
     void reinit(){
@@ -173,40 +201,43 @@ namespace gpu{
 
 
 
-    __global__ void kernelBugs(float4* gridOld, float4* gridNew, int SCREENX, int SCREENY) {
+    __global__ void kernelNbody(Body* oldBodies, Body* newBodies) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
-		if (index < SCREENX * SCREENY) {
+		if (index < d_params.nbBodies) {
             //access constant memory once per thread !
-            Param t_params = d_params;
+            //Param t_params = d_params;
             //float scale = t_params.scale;
             //float sx = t_params.mx;
             //float sy = t_params.my;
 
+            int i = index;
+            float3 acc = {0.0f, 0.0f, 0.0f};
 
-            //deduce i, j (pixel coordinate) from threadIdx, blockIdx 
-            int i = index / SCREENX;
-		    int j = index - i * SCREENX;
-
-			//new cell
-            float4* cellOld = gridOld + (i * SCREENX + j);
-            float4* cellNew = gridNew + (i * SCREENX + j);
-            
+            for (int j = 0; j < d_params.nbBodies; j++) {
+                if (i != j) { 
+                    float3 r = nbd::minus(oldBodies[j].pos, oldBodies[i].pos);
+                    float d = nbd::length2(r) + d_params.EPS2;  
+                    float factor = d_params.G * oldBodies[j].mass / sqrtf(d * d * d);
+                    acc = nbd::add(acc, nbd::multiply(factor, r));
+                }
+            }
+            newBodies[i].pos = nbd::add(oldBodies[i].pos, oldBodies[i].vel);
+            newBodies[i].vel = nbd::add(oldBodies[i].vel, acc);            
 		}
 	}
 
-    void imp_Bugs(){
+    void imp_NBody(){
         //initialisation
-        int N = gbl::SCREEN_X * gbl::SCREEN_Y;
+        int N = h_params.nbBodies;
 		int M = 256;
 
-        //always swap from grid 1 to grid 2 and sawp pointers after
-
         //computation
-        //kernelBugs << <(N + M - 1) / M, M >> > (bugs::d_grid1, bugs::d_grid2, gbl::SCREEN_X, gbl::SCREEN_Y);
+        kernelNbody << <(N + M - 1) / M, M >> > (nbd::d_bodies1, nbd::d_bodies2);
+        checkKernelErrors();
 
-        //fecth grid from GPU to CPU and swap grid
-        //checkCudaErrors( cudaMemcpy(bugs::h_grid1, bugs::d_grid2, N * sizeof(float4), cudaMemcpyDeviceToHost));
-        //std::swap(bugs::d_grid1, bugs::d_grid2);
+        //fecth newly computed bodies from GPU to CPU and swap grid
+        checkCudaErrors( cudaMemcpy(nbd::h_bodies1, nbd::d_bodies2, N * sizeof(Body), cudaMemcpyDeviceToHost));
+        std::swap(nbd::d_bodies1, nbd::d_bodies2);
     }
 
 }//end namespace gpu
@@ -229,27 +260,48 @@ namespace wdw{
     void automataParam(){
         ImGui::Begin("Nbodies");
 
+        ImGui::SeparatorText("Advanced parameters");
+        ImGui::InputFloat("gravitaional const", &h_params.G,0,0,"%.7f");
+        ImGui::InputFloat("EPSILON²", &h_params.EPS2);
+        ImGui::DragFloat("min mass", &nbd::minmass,0.5f,0.1f,10.0f);
+        ImGui::DragFloat("max mass", &nbd::maxmass,0.5f,1.0f,10.0f);
 
-
-        ImGui::NewLine();
+ 
 
         ImGui::SeparatorText("Advanced parameters");
         ImGui::InputInt("max iter/frame", &gbl::max_fps);
-        if(ImGui::InputInt("display count", &h_params.nbBodies)) h_params.nbBodies = h_params.nbBodies > MAXBODYCOUNT ? MAXBODYCOUNT : h_params.nbBodies;
+        static int buffermaxcount = 1024;
+        ImGui::InputInt("loaded", &buffermaxcount);
+        ImGui::SameLine(); HelpMarker(
+                "The number of Bodies loaded in memory\n"
+                "press apply to reload");
+        ImGui::SameLine();
+        if(ImGui::Button("apply")){
+            gbl::paused = true;
+            nbd::MAXBODYCOUNT = buffermaxcount;
+            h_params.nbBodies = h_params.nbBodies > nbd::MAXBODYCOUNT ? nbd::MAXBODYCOUNT : h_params.nbBodies;
+            reinit();
+            nbd::randomBodies(nbd::h_bodies1, nbd::MAXBODYCOUNT);
+            if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(nbd::d_bodies1, nbd::h_bodies1, nbd::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
+            gbl::paused = false;
+        }
+        //if(ImGui::InputInt("display count", &h_params.nbBodies)) h_params.nbBodies = h_params.nbBodies > nbd::MAXBODYCOUNT ? nbd::MAXBODYCOUNT : h_params.nbBodies;
+        ImGui::SliderInt("displayed", &h_params.nbBodies, 1, nbd::MAXBODYCOUNT);
+        ImGui::SameLine(); HelpMarker(
+                "The number of Bodies processed\n"
+                "(bodies hidden aren't evalueated when\n"
+                "updating positions)");
 
-        
-       
         ImGui::SeparatorText("Options");
         if(ImGui::Button("regenerate")){
             gbl::paused = true;
-            nbd::randomBodies(nbd::h_bodies1, MAXBODYCOUNT);
-            if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(nbd::d_bodies1, nbd::h_bodies1, MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
+            nbd::randomBodies(nbd::h_bodies1, nbd::MAXBODYCOUNT);
+            if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(nbd::d_bodies1, nbd::h_bodies1, nbd::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
             gbl::paused = false;
         }
-        ImGui::DragFloat("dpos", &nbd::dpos,0.01f,0.0f,2.0f);
-        ImGui::DragFloat("dvel", &nbd::dvel, 0.01f, 0.0f, 2.0f, "%.5f");
-        ImGui::DragFloat("min mass", &nbd::minmass,0.5f,0.1f,10.0f);
-        ImGui::DragFloat("max mass", &nbd::maxmass,0.5f,1.0f,10.0f);
+        ImGui::DragFloat("dpos", &nbd::dpos, 0.01f, 1.0f, 5.0f, "%.5f");
+        ImGui::DragFloat("dvel", &nbd::dvel, 0.01f, 0.0f, 1.0f, "%.5f");
+
 
 
         ImGui::End();
@@ -290,12 +342,16 @@ void init(){
         case CPU_MODE: cpu::init(); break;
         case GPU_MODE: gpu::init(); break;
 	}
+    nbd::randomBodies(nbd::h_bodies1, nbd::MAXBODYCOUNT);
+    if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(nbd::d_bodies1, nbd::h_bodies1, nbd::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
 }
 void reinit(){
+    cudaDeviceSynchronize();
 	switch (gbl::mode){
         case CPU_MODE: cpu::reinit(); break;
         case GPU_MODE: gpu::reinit(); break;
 	}
+    cudaDeviceSynchronize();
 }
 
 
@@ -411,18 +467,20 @@ int main(void){
 
 
         //framerate
-        gbl::max_fps = 20;
+        gbl::max_fps = 60;
         
 
         //nbd
         h_params.nbBodies = 32;
+        h_params.G = 0.0000001f;
+        h_params.EPS2 = 0.1f;
 
-        glClearColor(0.0,0.0,0.0,0.0);
+        glClearColor(0.3,0.3,0.3,1.0);
         glColor4f(1.0,1.0,1.0,1.0);
         glDisable(GL_DEPTH_TEST);
         glPointSize(2.0f);
 
-        nbd::randomBodies(nbd::h_bodies1, MAXBODYCOUNT);
+        nbd::randomBodies(nbd::h_bodies1, nbd::MAXBODYCOUNT);
     }
 
     /* Initialize callback*/
@@ -465,8 +523,11 @@ int main(void){
             cameraApply();
             glClear(GL_COLOR_BUFFER_BIT);
             glEnableClientState(GL_VERTEX_ARRAY);
-            glVertexPointer(4, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
+            glEnableClientState(GL_COLOR_ARRAY);
+            glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
+            glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos)); //todo replace with color
 	        glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
+            glDisableClientState(GL_COLOR_ARRAY);
 	        glDisableClientState(GL_VERTEX_ARRAY);
         }
   

@@ -122,6 +122,7 @@ void toggleMode(int m){
 void wdw_info(int mode, int sx, int sy, int fps){
     ImGui::Begin("Base info");
 
+    ImGui::Checkbox("Paused", &gbl::paused);
     ImGui::Text("Mode : "); 
     ImGui::SameLine(); if(ImGui::RadioButton("CPU", &gbl::mode, CPU_MODE)){toggleMode(CPU_MODE);}
     ImGui::SameLine(); if(ImGui::RadioButton("GPU", &gbl::mode, GPU_MODE)){toggleMode(GPU_MODE);}

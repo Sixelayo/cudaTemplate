@@ -377,7 +377,7 @@ namespace gpu{
 	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid1, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 	    checkCudaErrors( cudaMalloc((void**)&bugs::d_grid2, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 
-        //ideally transfer active grid in cpu to gpu but due to architecture not possible to fetch previous grid because it was cleaned
+        //ideally transfer active grid in cpu to gpu but due to architecture not possible to fetch previous grid because it was cleaned (must change order when clean is exec)
         //checkCudaErrors( cudaMemcpy(bugs::d_grid1, bugs::h_grid, gbl::SCREEN_X*gbl::SCREEN_Y*sizeof(float4), cudaMemcpyHostToDevice) );
         gbl::display = imp_Bugs;
     }
