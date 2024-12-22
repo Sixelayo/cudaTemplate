@@ -344,10 +344,10 @@ namespace wdw{
         }
     }
 
-    void automataParam(){
+    void nbodyParam(){
         ImGui::Begin("Nbodies");
 
-        ImGui::SeparatorText("Advanced parameters");
+        ImGui::SeparatorText("Simulation Settings");
         ImGui::InputFloat("gravitaional const", &h_params.G,0,0,"%.7f");
         ImGui::InputFloat("EPSILON²", &h_params.EPS2);
         ImGui::DragFloat("min mass", &nbd::minmass,0.5f,0.1f,10.0f);
@@ -428,7 +428,7 @@ namespace wdw{
         static int current_gpu_mode = 0;
         const char* items[] = { "version 1", "version 2"};
 
-        if (ImGui::Combo("GPU version", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo("GPU", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
             {
             //save cbk for switching between modes
@@ -440,7 +440,8 @@ namespace wdw{
         }
         if(current_gpu_mode == 1){
             ImGui::SameLine(); HelpMarker(
-                    "preload batchs of pos and mass into shared memory\n"
+                    "Version 1 : default implementation N*N access"
+                    "Version 2 : preload batchs of pos and mass into shared memory\n"
                     "to lower global memory access count");
         }
     }
@@ -496,8 +497,8 @@ namespace cbk{
     }
 
     void updt_mpos(double xpos, double ypos){
-        h_params.mx = h_params.offset.a + (float)(h_params.scale*(xpos - gbl::SCREEN_X / 2));
-        h_params.my = h_params.offset.b - (float)(h_params.scale*(ypos - gbl::SCREEN_Y / 2));
+        h_params.mx = h_params.offset.a + (float)(0.003f*(xpos - gbl::SCREEN_X / 2));
+        h_params.my = h_params.offset.b - (float)(0.003f*(ypos - gbl::SCREEN_Y / 2));
     }
 
     void mouse_button(GLFWwindow* window, int button, int action, int mods){
@@ -513,8 +514,8 @@ namespace cbk{
                 updt_mpos(xpos, ypos);
             }
             if(button == GLFW_MOUSE_BUTTON_RIGHT && action == GLFW_PRESS){
-                h_params.offset.a += (float)(h_params.scale * (xpos - gbl::SCREEN_X / 2));
-		        h_params.offset.b += -(float)(h_params.scale * (ypos - gbl::SCREEN_Y / 2));
+                h_params.offset.a += (float)(0.003f * (xpos - gbl::SCREEN_X / 2));
+		        h_params.offset.b += -(float)(0.003f * (ypos - gbl::SCREEN_Y / 2));
             }
         }
     }
@@ -555,7 +556,7 @@ namespace cbk{
 }//end namespace cbk
 
 void runColroing1(){
-    cameraApply(-h_params.mx,h_params.my);
+    cameraApply(-h_params.mx,h_params.my,h_params.scale);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnableClientState(GL_VERTEX_ARRAY);
     glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
@@ -563,7 +564,7 @@ void runColroing1(){
     glDisableClientState(GL_VERTEX_ARRAY);
 }
 void runColroing2(){
-    cameraApply(-h_params.mx,h_params.my);
+    cameraApply(-h_params.mx,h_params.my,h_params.scale);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
@@ -574,7 +575,7 @@ void runColroing2(){
     glDisableClientState(GL_VERTEX_ARRAY);
 }
 void runColroing3(){
-    cameraApply(-h_params.mx,h_params.my);
+    cameraApply(-h_params.mx,h_params.my,h_params.scale);
     glClear(GL_COLOR_BUFFER_BIT);
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
@@ -607,7 +608,7 @@ int main(void){
     /* malloc values ...*/
     init();
     {/* set up generic parameters*/
-        h_params.scale = 0.003f;
+        h_params.scale = 1.0f;
         h_params.mx = 0.0f;
         h_params.my = 0.0f;
         h_params.offset = Complex(0.0f, 0.0f);
@@ -635,8 +636,6 @@ int main(void){
         glColor4f(1.0,1.0,1.0,1.0);
         glDisable(GL_DEPTH_TEST);
         glPointSize(2.0f);
-
-        nbd::randomBodies(nbd::h_bodies1, nbd::MAXBODYCOUNT);
     }
 
     /* Initialize callback*/
@@ -660,7 +659,7 @@ int main(void){
         utl::newframeImGui();
         if(gbl::otherWindow) {
             utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
-            wdw::automataParam();
+            wdw::nbodyParam();
         }
         
         //timer management

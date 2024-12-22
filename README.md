@@ -12,6 +12,7 @@
 # List of .cu files
 
 > Press w at any point to show / hide additional windows
+> hold `ctrl`while scrolling to zoom faster
 
 ## julia
 
@@ -99,7 +100,7 @@ Assuming N body, declare N thread with a block size 256
 - kernel v1 : loop over all other positions (ie N\*N access to constant memory)
 - kernel v2 : for each block, load the 256 first positions. Add partial acceleration for each body. Then load the next 256 bodies and repeat
 
-We notice a MASSIVE performance increase when using shared memory and loading batch of pos / mass data
+We notice a MASSIVE performance increase when using shared memory and loading batch of pos / mass data. when pushing simulation to its limit (20k bodies)
 
 ## todo
 

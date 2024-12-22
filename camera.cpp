@@ -81,7 +81,7 @@ static void normalize(double v[]) {
     v[2] /= n;
 }
 
-void cameraApply(float eyerotx, float eyeroty) {
+void cameraApply(float eyerotx, float eyeroty, float zoomscale) {
     int viewport[4];
     //double viewDistance;
     glGetIntegerv(GL_VIEWPORT, viewport);
@@ -140,6 +140,7 @@ void cameraApply(float eyerotx, float eyeroty) {
     glMatrixMode(GL_MODELVIEW);
     glm::vec3 eye(eyex, eyey, eyez);
     eye = glm::vec3(glm::rotate(glm::rotate(glm::mat4(1.0f), eyerotx, glm::vec3(0.0f, 1.0f, 0.0f)), eyeroty, glm::vec3(1.0f, 0.0f, 0.0f)) * glm::vec4(eye, 1.0f));
+    eye = zoomscale*eye;
 
     glm::vec3 center(refx, refy, refz);
     glm::vec3 up(upx, upy, upz);

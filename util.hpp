@@ -124,8 +124,8 @@ void wdw_info(int mode, int sx, int sy, int fps){
 
     ImGui::Checkbox("Paused", &gbl::paused);
     ImGui::Text("Mode : "); 
-    ImGui::SameLine(); if(ImGui::RadioButton("CPU", &gbl::mode, CPU_MODE)){toggleMode(CPU_MODE);}
-    ImGui::SameLine(); if(ImGui::RadioButton("GPU", &gbl::mode, GPU_MODE)){toggleMode(GPU_MODE);}
+    ImGui::SameLine(); if(ImGui::RadioButton("CPUrad", &gbl::mode, CPU_MODE)){toggleMode(CPU_MODE);}
+    ImGui::SameLine(); if(ImGui::RadioButton("GPUrad", &gbl::mode, GPU_MODE)){toggleMode(GPU_MODE);}
 
     ImGui::Text("Current Window size : %d x %d", sx, sy);
     ImGui::Text("FPS : %d", fps);
