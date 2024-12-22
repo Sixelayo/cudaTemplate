@@ -104,10 +104,12 @@ We notice a MASSIVE performance increase when using shared memory and loading ba
 
 ## td5 kmeans
 
-- everything asked is present (TODO CHECK)
+- everything asked is present
 - I used a `struct Point` to store points and cluster. an int serve as both label (for points) and count (for cluster during phase 2)
 - there is technically useless data copying from gpu as I also fetch points position which don't change
 - we can observe configuration where kmeans wrongly converges when we really crank up the numbers of point (IE : one cluster (during the algorithm) will match 2 cluster (from random initialisaiton))
+- swithcing from gpu version 1 to version 2 is little buggy because of unproper data transfer, when switching gpu implementation regenerate random data.
+- While I do indeed have reduceKernel that makes things faster (we can see it for sure with 500k points / 500 cluster that GPU version 2 is definitly faster that version 1 that does phase 2 on cpu), I'm quite confident this wasn't the proper way to do it. I've used one kernel per cluster, and used the same trick as in the previous TD kmeans (preloading a batch of points). I'm pretty sure the correct way to do things was to use one kernel per points, and doing a reduction for summing closter partial sum / count (because most of the time there will be way more points than cluster so it's smater to have kernel / per points and do the well known standart reduction)
 
 
 # Other remarkss

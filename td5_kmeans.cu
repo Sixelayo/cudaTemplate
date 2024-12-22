@@ -9,7 +9,7 @@
 #define DEBUGV(x) std::cout << (x)
 
 
-#define TITLE "NBODY"
+#define TITLE "KMEANS"
 
 
 //mandatory forward declaration
@@ -176,6 +176,7 @@ inline void sendPointsToGPU(){
 }
 inline void sendCentroToGpu(){
     checkCudaErrors( cudaMemcpy(kmn::d_centroids1, kmn::h_centroids1, kmn::NBCENTROIDS*sizeof(Point), cudaMemcpyHostToDevice) );
+    checkCudaErrors( cudaMemcpy(kmn::d_centroids2, kmn::h_centroids1, kmn::NBCENTROIDS*sizeof(Point), cudaMemcpyHostToDevice) ); //(because they need color)
 }
 inline void getPointsFromGPU(){
     checkCudaErrors( cudaMemcpy(kmn::h_points, kmn::d_points, kmn::NBPOINTS * sizeof(Point), cudaMemcpyDeviceToHost));
@@ -270,7 +271,7 @@ namespace gpu{
         checkCudaErrors( cudaMallocHost((void**) &kmn::h_centroids1, kmn::NBCENTROIDS * sizeof(Point)) );
         checkCudaErrors( cudaMallocHost((void**) &kmn::h_centroids2, kmn::NBCENTROIDS * sizeof(Point)) ); //nescessary for phase 2 when done on cpu
         checkCudaErrors( cudaMalloc((void**) &kmn::d_centroids1, kmn::NBCENTROIDS * sizeof(Point)) );
-        checkCudaErrors( cudaMalloc((void**) &kmn::d_centroids2, kmn::NBCENTROIDS * sizeof(Point)) );
+        checkCudaErrors( cudaMalloc((void**) &kmn::d_centroids2, kmn::NBCENTROIDS * sizeof(Point)) ); //nescerray for phase 2 when done on gpu
         gbl::display = gpu_cbk; //uses intermediate gpu cbk for saving mode when switching back to cpu
     }
     void clean(){
@@ -312,10 +313,45 @@ namespace gpu{
             //point i assigned to closest cluster n (label and color)
             pts[index].label = n;
             pts[index].col = oldCentro[n].col;
-
-        
 		}
 	}
+    __global__ void kernelReduce(Point* pts, Point* newCentro, int nbpts, int nbcentro) {
+        //warning : harcodec values for block of size 256
+        const int BDIM = 256;
+        __shared__ Point shared_pts[BDIM]; //the 256 points preload in shared memory
+        int index = threadIdx.x + blockIdx.x * blockDim.x;
+        if (index < nbcentro) {
+            //reset
+            newCentro[index].pos = {0.0f,0.0f,0.0f};
+            newCentro[index].label = 0; //used a size
+
+            //used shared memory batch preload
+            int loadIndex =0;
+            unsigned int tid = threadIdx.x;
+            while(loadIndex < nbpts){
+                if(tid+loadIndex < nbpts ) shared_pts[tid] = pts[loadIndex+tid];
+                else pts[tid] = {0.0f,0.0f,0.0f};
+                __syncthreads();
+
+                //sum partial closest points
+                for (int j = 0; j < BDIM; j++) {
+                    int p_index =  shared_pts[tid].label;
+                    if(p_index == index){//very suboptimal
+                        newCentro[index].pos =  kmn::add(newCentro[index].pos, shared_pts[tid].pos);
+                        newCentro[index].label += 1;
+                    }
+                }
+                loadIndex += BDIM;
+            }
+
+            //divided each centroid pos by its count
+            newCentro[index].pos = kmn::multiply((float)1/newCentro[index].label,newCentro[index].pos);
+
+            //optimization for later: reset here at the same time before swapping
+            //oldCentro[index].pos = {0.0f,0.0f,0.0f};
+            //oldCentro[index].label = 0; //used a size
+        }
+    }
 
 
     void imp_KmeansV1(){
@@ -345,14 +381,19 @@ namespace gpu{
         // phase1 assignment
         kernelAssign << <(N + M - 1) / M, M >> > (kmn::d_points, kmn::d_centroids1, kmn::NBPOINTS, kmn::NBCENTROIDS);
         checkKernelErrors();
-
-        getPointsFromGPU(); //fetch label
+        cudaDeviceSynchronize();
 
         //phase 2 reduction
-        cpu::phase2();
+        N = kmn::NBCENTROIDS;
+        kernelReduce << <(N + M - 1) / M, M >> >(kmn::d_points, kmn::d_centroids2, kmn::NBPOINTS, kmn::NBCENTROIDS);
+        checkKernelErrors();
+        cudaDeviceSynchronize();
+        
+        getPointsFromGPU(); //fetch label
+        getCentroFromGPU(); //fetch centro
+        
 
-        std::swap(kmn::h_centroids1, kmn::h_centroids2);
-        sendCentroToGpu(); //send newly computed centro position in phase2 to GPU
+        std::swap(kmn::d_centroids1, kmn::d_centroids2);
 
     }
 
@@ -436,17 +477,22 @@ namespace wdw{
             switch (current_gpu_mode)
             {
             //save cbk for switching between modes
-            case 0: gpu::gpu_cbk = gpu::imp_KmeansV1; break;
-            case 1: gpu::gpu_cbk = gpu::imp_KmeansV2; break;
+            case 0: 
+                gpu::gpu_cbk = gpu::imp_KmeansV1; 
+                getCentroFromGPU();
+                break;
+            case 1:
+                gpu::gpu_cbk = gpu::imp_KmeansV2;
+                sendCentroToGpu();
+                break;
             default: break;
             }
             gbl::display = gpu::gpu_cbk;
         }
         if(current_gpu_mode == 1){
             ImGui::SameLine(); HelpMarker(
-                    "Version 1 : default implementation N*N access"
-                    "Version 2 : preload batchs of pos and mass into shared memory\n"
-                    "to lower global memory access count");
+                    "Version 1 : phase 2 on CPU\n"
+                    "Version 2 : phase 2 on GPU with a second kernel");
         }
     }
 }//end namespace wdw
