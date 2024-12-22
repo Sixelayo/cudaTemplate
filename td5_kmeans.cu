@@ -4,7 +4,7 @@
 
 #include "camera.cpp"
 
-
+#define INF 2e10f
 #define DEBUGA(x) std::cout << __FILE__ << ":" << __LINE__ << " - " << #x << " = " << (x) << std::endl
 #define DEBUGV(x) std::cout << (x)
 
@@ -54,7 +54,8 @@ struct Point{
 
 namespace kmn{
     Point* h_points;
-    Point* h_centroids;
+    Point* h_centroids1;
+    Point* h_centroids2;
 
     //value linked with buffer in wdw with buffer for chagnes
     static int NBPOINTS = 16*1024;
@@ -120,9 +121,19 @@ namespace kmn{
     }
     void randomClusters(){
         for(int i=0; i < kmn::NBCENTROIDS; i++){
-            kmn::h_centroids[i].pos = kmn::h_points[i].pos;
-            kmn::h_centroids[i].col = randomColor();
+            kmn::h_centroids1[i].pos = kmn::h_points[i].pos;
+            
+            
+            //reset here before swapping
+            kmn::h_centroids2[i].pos = {0.0f,0.0f,0.0f}; 
+            kmn::h_centroids2[i].label = 0; //used a size
 
+            float3 c= randomColor();
+
+            //both centroid share the same color
+            kmn::h_centroids1[i].col = c;
+            kmn::h_centroids2[i].col = c; //both centroid share the same colors
+            
         }
     }
 
@@ -163,28 +174,72 @@ namespace cpu{
 
     void init(){
         kmn::h_points = (Point*) malloc(kmn::NBPOINTS * sizeof(Point));
-        kmn::h_centroids = (Point*) malloc(kmn::NBCENTROIDS * sizeof(Point));
+        kmn::h_centroids1 = (Point*) malloc(kmn::NBCENTROIDS * sizeof(Point));
+        kmn::h_centroids2 = (Point*) malloc(kmn::NBCENTROIDS * sizeof(Point));
         gbl::display = imp_KMeans;
     }
     void clean(){
         free(kmn::h_points); kmn::h_points = nullptr;
-        free(kmn::h_centroids); kmn::h_centroids = nullptr;
+        free(kmn::h_centroids1); kmn::h_centroids1 = nullptr;
+        free(kmn::h_centroids2); kmn::h_centroids2 = nullptr;
     }
     void reinit(){
         kmn::h_points = (Point*)realloc(kmn::h_points, kmn::NBPOINTS * sizeof(Point));
-        kmn::h_centroids = (Point*)realloc(kmn::h_centroids, kmn::NBCENTROIDS * sizeof(Point));
+        kmn::h_centroids1 = (Point*)realloc(kmn::h_centroids1, kmn::NBCENTROIDS * sizeof(Point));
+        kmn::h_centroids2 = (Point*)realloc(kmn::h_centroids2, kmn::NBCENTROIDS * sizeof(Point));
     }
 
+    void phase1(){
+        //phase 1 assignment (assign each point to closest centroid)
+        for (int i = 0; i<kmn::NBPOINTS; i++){
+            float dmin = INF;
+            int n = 0;
+            for(int j=0; j < kmn::NBCENTROIDS; j++){
+                float distance = sqrtf(kmn::length2(kmn::minus(kmn::h_centroids1[j].pos, kmn::h_points[i].pos)));
+                if(distance<dmin) {
+                    dmin = distance;
+                    n=j;
+                }
+            }
+            //point i assigned to closest cluster n (label and color)
+            kmn::h_points[i].label = n;
+            kmn::h_points[i].col = kmn::h_centroids1[n].col;
+        }
+    }
+
+    void phase2(){
+        //reduction, recompute centroids
+
+        //reset new centroids
+        //this operation is done once at initialisation and at at the end of phase2 right before swapping, reset centroids1 (so no need to reset here)
+        // for(int j=0; j < kmn::NBCENTROIDS; j++){
+        //     kmn::h_centroids2[j].pos = {0.0f,0.0f,0.0f};
+        //     kmn::h_centroids2[j].label = 0; //used a size
+        // }
+
+        //for each point, add its coordinate and one to the centroids (we use label as size for centroid)
+        for (int i = 0; i<kmn::NBPOINTS; i++){
+            int index = kmn::h_points[i].label;
+            kmn::h_centroids2[index].pos =  kmn::add(kmn::h_centroids2[index].pos, kmn::h_points[i].pos);
+            kmn::h_centroids2[index].label += 1;
+        }
+
+        //divided each centroid pos by its count AND reset for next step
+        for(int j=0; j < kmn::NBCENTROIDS; j++){
+            kmn::h_centroids2[j].pos = kmn::multiply((float)1/kmn::h_centroids2[j].label,kmn::h_centroids2[j].pos);
+
+            //optimization : reset here at the same time before swapping
+            kmn::h_centroids1[j].pos = {0.0f,0.0f,0.0f};
+            kmn::h_centroids1[j].label = 0; //used a size
+        }
+
+
+    }
 
     void imp_KMeans() {
-		// your N-body algorithm here!
-        // your kmeans algorithm here
-        int i;
-        for (i = 0; i<kmn::NBPOINTS; i++)
-        {
-            kmn::h_points[i].label = i%kmn::NBCENTROIDS;
-            kmn::h_points[i].col = kmn::h_centroids[kmn::h_points[i].label].col;
-        }
+        phase1();
+        phase2();
+        std::swap(kmn::h_centroids1, kmn::h_centroids2);
 	}
 
 }//end namespace cpu
@@ -229,16 +284,16 @@ namespace gpu{
     //         float3 acc = {0.0f, 0.0f, 0.0f};
 
     //         for (int j = 0; j < d_params.nbBodies; j++) {
-    //             if (i != j) { 
+    //             if (i != j) {
     //                 float3 r = kmn::minus(oldBodies[j].pos, oldBodies[i].pos);
-    //                 float d = kmn::length2(r) + d_params.EPS2;  
+    //                 float d = kmn::length2(r) + d_params.EPS2;
     //                 float factor = d_params.G * oldBodies[j].mass / sqrtf(d * d * d);
     //                 acc = kmn::add(acc, kmn::multiply(factor, r));
     //             }
     //         }
     //         newBodies[i].pos = kmn::add(oldBodies[i].pos, oldBodies[i].vel);
     //         newBodies[i].vel = kmn::add(oldBodies[i].vel, acc);
-    //         if(d_params.updtcol) kmn::updtColors(newBodies[i],d_params.slowspeed, d_params.fastspeed, &d_params.col_slow, &d_params.col_fast);         
+    //         if(d_params.updtcol) kmn::updtColors(newBodies[i],d_params.slowspeed, d_params.fastspeed, &d_params.col_slow, &d_params.col_fast);
 	// 	}
 	// }
 
@@ -267,7 +322,7 @@ namespace wdw{
 
     //warning, must be coherent with km::NBPOINTS and kmn::NBCENTROIDS
     static int bufferPointCount = 16*1024;
-    static int bufferCentroCount = 128; 
+    static int bufferCentroCount = 128;
 
     void applyParam(){
         gbl::paused = true;
@@ -275,7 +330,7 @@ namespace wdw{
         kmn::NBCENTROIDS = bufferCentroCount;
         reinit();
         //TODO HERE copy points to gpu
-        //if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(kmn::d_bodies1, kmn::h_bodies1, kmn::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) ); 
+        //if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(kmn::d_bodies1, kmn::h_bodies1, kmn::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
         gbl::paused = false;
     }
 
@@ -316,6 +371,7 @@ namespace wdw{
         }
 
         ImGui::DragFloat("dpos", &kmn::dpoints, 0.01f, 0.0f,3.0f, "%.3f");
+        ImGui::SameLine(); HelpMarker("dispersion factor");
 
 
 
@@ -379,7 +435,7 @@ void reinit(){
 }
 
 
-namespace cbk{ 
+namespace cbk{
     /*various callback
     You must ALWAYS forward the event to ImGui before processing it (except window resizing)
     You can find relevant ImGui callback in ./imgui/imgui_impl_glfw.cpp line 536 in function ImGui_ImplGlfw_InstallCallbacks
@@ -409,7 +465,7 @@ namespace cbk{
     void mouse_button(GLFWwindow* window, int button, int action, int mods){
         // Forward the event to ImGui
         ImGui_ImplGlfw_MouseButtonCallback(window, button, action, mods);
-        
+
         //if ImGui doesn't want the event, process it
         ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
@@ -442,7 +498,7 @@ namespace cbk{
     void scroll(GLFWwindow* window, double xoffset, double yoffset){
         // Forward the event to ImGui
         ImGui_ImplGlfw_ScrollCallback(window, xoffset, yoffset);
-        
+
         //if ImGui doesn't want the event, process it
         ImGuiIO& io = ImGui::GetIO();
         if(!io.WantCaptureMouse){
@@ -488,17 +544,17 @@ int main(void){
         h_params.mx = 0.0f;
         h_params.my = 0.0f;
         h_params.offset = Complex(0.0f, 0.0f);
-        
+
 
 
         //framerate
-        gbl::max_fps = 60;
-        
+        gbl::max_fps = 5;
+
         //gpu modes
         gpu::gpu_cbk = gpu::imp_NBody;
 
         //kmn
-        
+
 
 
         glClearColor(0.3,0.3,0.3,1.0);
@@ -531,7 +587,7 @@ int main(void){
             utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
             wdw::kmeansParam();
         }
-        
+
         //timer management
         double curr_time = glfwGetTime();
         double framerate = (double)1 / (double)gbl::max_fps;
@@ -544,24 +600,26 @@ int main(void){
             gbl::display();
             last_frame_time = curr_time;
         }
-         
+
         if(!gbl::paused){
             cameraApply(-h_params.mx,h_params.my,h_params.scale);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            //points
             glPointSize(1.0f);
             glEnableClientState(GL_VERTEX_ARRAY);
             glEnableClientState(GL_COLOR_ARRAY);
             glVertexPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_points->pos));
-            glColorPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_points->col)); 
+            glColorPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_points->col));
             glDrawArrays(GL_POINTS, 0, kmn::NBPOINTS);
             glDisableClientState(GL_COLOR_ARRAY);
             glDisableClientState(GL_VERTEX_ARRAY);
 
-
+            //centroids
             glPointSize(3.0f);
             glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
             glEnableClientState(GL_VERTEX_ARRAY);
-            glVertexPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_centroids->pos));//todo points position
+            glVertexPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_centroids1->pos));//todo points position
             glDrawArrays(GL_POINTS, 0, kmn::NBCENTROIDS);
             glDisableClientState(GL_VERTEX_ARRAY);
         }
@@ -570,7 +628,7 @@ int main(void){
         /* end frame for imgui*/
         utl::endframeImGui();
         utl::multiViewportImGui(window);
-        
+
 
         /* Swap front and back buffers */
         glfwSwapBuffers(window);
