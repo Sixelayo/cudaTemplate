@@ -56,6 +56,9 @@ namespace kmn{
     Point* h_points;
     Point* h_centroids1;
     Point* h_centroids2;
+    Point* d_points;
+    Point* d_centroids1;
+    Point* d_centroids2;
 
     //value linked with buffer in wdw with buffer for chagnes
     static int NBPOINTS = 16*1024;
@@ -162,12 +165,24 @@ struct Param {
     float mx, my; //mousepose
     Complex offset;
 
-    //nbd
+    //kmn
 };
 Param h_params;
 __constant__ Param d_params;
 
 
+inline void sendPointsToGPU(){
+    checkCudaErrors( cudaMemcpy(kmn::d_points, kmn::h_points, kmn::NBPOINTS*sizeof(Point), cudaMemcpyHostToDevice) );
+}
+inline void sendCentroToGpu(){
+    checkCudaErrors( cudaMemcpy(kmn::d_centroids1, kmn::h_centroids1, kmn::NBCENTROIDS*sizeof(Point), cudaMemcpyHostToDevice) );
+}
+inline void getPointsFromGPU(){
+    checkCudaErrors( cudaMemcpy(kmn::h_points, kmn::d_points, kmn::NBPOINTS * sizeof(Point), cudaMemcpyDeviceToHost));
+}
+inline void getCentroFromGPU(){
+    checkCudaErrors( cudaMemcpy(kmn::h_centroids1, kmn::d_centroids2, kmn::NBCENTROIDS * sizeof(Point), cudaMemcpyDeviceToHost));
+}
 
 namespace cpu{
     void imp_KMeans();
@@ -246,19 +261,24 @@ namespace cpu{
 
 namespace gpu{
     void (*gpu_cbk)();
-    void imp_NBody();
+    void imp_KmeansV1();
+    void imp_KmeansV2();
 
     void init(){
-        // checkCudaErrors( cudaMallocHost((void**) &kmn::h_bodies1, kmn::MAXBODYCOUNT * sizeof(Body)) );
-	    // checkCudaErrors( cudaMalloc((void**)&kmn::d_bodies1, kmn::MAXBODYCOUNT * sizeof(Body)) );
-	    // checkCudaErrors( cudaMalloc((void**)&kmn::d_bodies2, kmn::MAXBODYCOUNT * sizeof(Body)) );
+        checkCudaErrors( cudaMallocHost((void**) &kmn::h_points, kmn::NBPOINTS * sizeof(Point)) );
+        checkCudaErrors( cudaMalloc((void**) &kmn::d_points, kmn::NBPOINTS * sizeof(Point)) );
+        checkCudaErrors( cudaMallocHost((void**) &kmn::h_centroids1, kmn::NBCENTROIDS * sizeof(Point)) );
+        checkCudaErrors( cudaMallocHost((void**) &kmn::h_centroids2, kmn::NBCENTROIDS * sizeof(Point)) ); //nescessary for phase 2 when done on cpu
+        checkCudaErrors( cudaMalloc((void**) &kmn::d_centroids1, kmn::NBCENTROIDS * sizeof(Point)) );
+        checkCudaErrors( cudaMalloc((void**) &kmn::d_centroids2, kmn::NBCENTROIDS * sizeof(Point)) );
         gbl::display = gpu_cbk; //uses intermediate gpu cbk for saving mode when switching back to cpu
     }
     void clean(){
-        // checkCudaErrors( cudaFreeHost(kmn::h_bodies1));
-	    // checkCudaErrors( cudaFree(kmn::d_bodies1) );
-	    // checkCudaErrors( cudaFree(kmn::d_bodies2) );
-
+        checkCudaErrors( cudaFreeHost(kmn::h_points));
+        checkCudaErrors( cudaFreeHost(kmn::h_centroids1));
+	    checkCudaErrors( cudaFree(kmn::d_centroids1) );
+	    checkCudaErrors( cudaFree(kmn::d_centroids2) );
+	    checkCudaErrors( cudaFree(kmn::d_points) );
     }
     void reinit(){
         clean();
@@ -271,45 +291,69 @@ namespace gpu{
 
 
 
-    // __global__ void kernelNBody(Body* oldBodies, Body* newBodies) {
-	// 	int index = threadIdx.x + blockIdx.x * blockDim.x;
-	// 	if (index < d_params.nbBodies) {
-    //         //access constant memory once per thread !
-    //         //Param t_params = d_params;
-    //         //float scale = t_params.scale;
-    //         //float sx = t_params.mx;
-    //         //float sy = t_params.my;
+    __global__ void kernelAssign(Point* pts, Point* oldCentro, int nbpts, int nbcentro) {
+		int index = threadIdx.x + blockIdx.x * blockDim.x;
+		if (index < nbpts) {
+            //access constant memory once per thread !
+            //Param t_params = d_params;
+            //float scale = t_params.scale;
+            //float sx = t_params.mx;
+            //float sy = t_params.my;
 
-    //         int i = index;
-    //         float3 acc = {0.0f, 0.0f, 0.0f};
+            float dmin = INF;
+            int n = 0;
+            for(int j=0; j < nbcentro; j++){
+                float distance = sqrtf(kmn::length2(kmn::minus(oldCentro[j].pos, pts[index].pos)));
+                if(distance<dmin) {
+                    dmin = distance;
+                    n=j;
+                }
+            }
+            //point i assigned to closest cluster n (label and color)
+            pts[index].label = n;
+            pts[index].col = oldCentro[n].col;
 
-    //         for (int j = 0; j < d_params.nbBodies; j++) {
-    //             if (i != j) {
-    //                 float3 r = kmn::minus(oldBodies[j].pos, oldBodies[i].pos);
-    //                 float d = kmn::length2(r) + d_params.EPS2;
-    //                 float factor = d_params.G * oldBodies[j].mass / sqrtf(d * d * d);
-    //                 acc = kmn::add(acc, kmn::multiply(factor, r));
-    //             }
-    //         }
-    //         newBodies[i].pos = kmn::add(oldBodies[i].pos, oldBodies[i].vel);
-    //         newBodies[i].vel = kmn::add(oldBodies[i].vel, acc);
-    //         if(d_params.updtcol) kmn::updtColors(newBodies[i],d_params.slowspeed, d_params.fastspeed, &d_params.col_slow, &d_params.col_fast);
-	// 	}
-	// }
+        
+		}
+	}
 
 
-    void imp_NBody(){
-        // //initialisation
-        // int N = h_params.nbBodies;
-		// int M = 256;
+    void imp_KmeansV1(){
+        //initialisation
+        int N = kmn::NBPOINTS;
+		int M = 256;
 
-        // //computation
-        // kernelNBody << <(N + M - 1) / M, M >> > (kmn::d_bodies1, kmn::d_bodies2);
-        // checkKernelErrors();
+        // phase1 assignment
+        kernelAssign << <(N + M - 1) / M, M >> > (kmn::d_points, kmn::d_centroids1, kmn::NBPOINTS, kmn::NBCENTROIDS);
+        checkKernelErrors();
 
-        // //fecth newly computed bodies from GPU to CPU and swap grid
-        // checkCudaErrors( cudaMemcpy(kmn::h_bodies1, kmn::d_bodies2, N * sizeof(Body), cudaMemcpyDeviceToHost));
-        // std::swap(kmn::d_bodies1, kmn::d_bodies2);
+        getPointsFromGPU(); //fetch label
+
+        //phase 2 reduction
+        cpu::phase2();
+
+        std::swap(kmn::h_centroids1, kmn::h_centroids2);
+        sendCentroToGpu(); //send newly computed centro position in phase2 to GPU
+
+    }
+
+    void imp_KmeansV2(){ //TODO change
+        //initialisation
+        int N = kmn::NBPOINTS;
+		int M = 256;
+
+        // phase1 assignment
+        kernelAssign << <(N + M - 1) / M, M >> > (kmn::d_points, kmn::d_centroids1, kmn::NBPOINTS, kmn::NBCENTROIDS);
+        checkKernelErrors();
+
+        getPointsFromGPU(); //fetch label
+
+        //phase 2 reduction
+        cpu::phase2();
+
+        std::swap(kmn::h_centroids1, kmn::h_centroids2);
+        sendCentroToGpu(); //send newly computed centro position in phase2 to GPU
+
     }
 
 
@@ -329,8 +373,10 @@ namespace wdw{
         kmn::NBPOINTS = bufferPointCount;
         kmn::NBCENTROIDS = bufferCentroCount;
         reinit();
-        //TODO HERE copy points to gpu
-        //if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(kmn::d_bodies1, kmn::h_bodies1, kmn::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
+        if(gbl::mode == GPU_MODE){
+            sendPointsToGPU();
+            sendCentroToGpu();
+        }
         gbl::paused = false;
     }
 
@@ -365,8 +411,10 @@ namespace wdw{
             gbl::paused = true;
             kmn::randomPoints();
             kmn::randomClusters();
-            //todo here pass to gpu
-            //if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(kmn::d_bodies1, kmn::h_bodies1, kmn::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
+            if(gbl::mode == GPU_MODE){
+                sendPointsToGPU();
+                sendCentroToGpu();
+            }
             gbl::paused = false;
         }
 
@@ -388,9 +436,8 @@ namespace wdw{
             switch (current_gpu_mode)
             {
             //save cbk for switching between modes
-            case 0: gpu::gpu_cbk = gpu::imp_NBody; break;
-            //todo here addcase 1
-            //case 1: gpu::gpu_cbk = gpu::imp_NBodySHARED; break;
+            case 0: gpu::gpu_cbk = gpu::imp_KmeansV1; break;
+            case 1: gpu::gpu_cbk = gpu::imp_KmeansV2; break;
             default: break;
             }
             gbl::display = gpu::gpu_cbk;
@@ -420,8 +467,10 @@ void init(){
 	}
     kmn::randomPoints();
     kmn::randomClusters();
-    //todo here copy to gpu
-    //if(gbl::mode == GPU_MODE) checkCudaErrors( cudaMemcpy(kmn::d_bodies1, kmn::h_bodies1, kmn::MAXBODYCOUNT*sizeof(Body), cudaMemcpyHostToDevice) );
+    if(gbl::mode == GPU_MODE){
+        sendPointsToGPU();
+        sendCentroToGpu();
+    }
 }
 void reinit(){
     cudaDeviceSynchronize();
@@ -551,7 +600,7 @@ int main(void){
         gbl::max_fps = 5;
 
         //gpu modes
-        gpu::gpu_cbk = gpu::imp_NBody;
+        gpu::gpu_cbk = gpu::imp_KmeansV1;
 
         //kmn
 

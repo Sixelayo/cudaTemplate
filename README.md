@@ -102,15 +102,12 @@ Assuming N body, declare N thread with a block size 256
 
 We notice a MASSIVE performance increase when using shared memory and loading batch of pos / mass data. when pushing simulation to its limit (20k bodies)
 
-## todo
+## td5 kmeans
 
-
-- add camera contorl
-- 3 color mode
-    - default
-    - position
-    - normalized speed (lerp between c1 / c2)
-- q3
+- everything asked is present (TODO CHECK)
+- I used a `struct Point` to store points and cluster. an int serve as both label (for points) and count (for cluster during phase 2)
+- there is technically useless data copying from gpu as I also fetch points position which don't change
+- we can observe configuration where kmeans wrongly converges when we really crank up the numbers of point (IE : one cluster (during the algorithm) will match 2 cluster (from random initialisaiton))
 
 
 # Other remarkss

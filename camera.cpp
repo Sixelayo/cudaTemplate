@@ -24,7 +24,7 @@
 static double eyex = 0, eyey = 0, eyez = STARTDISTANCE;
 static double refx = 0, refy = 0, refz = 0;
 static double upx = 0, upy = 1, upz = 0;
-static double viewDistance = STARTDISTANCE;
+static double viewDistance = STARTDISTANCE+40; //soyons fou et voyons loin
 
 static double xminRequested = -5, xmaxRequested = 5;
 static double yminRequested = -5, ymaxRequested = 5;
