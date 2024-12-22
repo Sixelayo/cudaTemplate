@@ -92,7 +92,14 @@ Optional things I would've had given infinite time :
 - I also adapted camera.c for glfw and plugged callback into my template file but things could be more way more clean
 - Only primitive camera control to move eye arround the center were added
 - I rewrite a few things and now use a struct Body{} instead of raw global array.
-- you can view colors on particles (bade on position, or a mapranged of normalized speed)
+- you can add colors to particles (based on position, or a mapranged of normalized speed)
+
+Faster version with shared memory (I was confused at first but here's the strategy I adopted, I'm unsure if that's what was asked)
+Assuming N body, declare N thread with a block size 256
+- kernel v1 : loop over all other positions (ie N\*N access to constant memory)
+- kernel v2 : for each block, load the 256 first positions. Add partial acceleration for each body. Then load the next 256 bodies and repeat
+
+We notice a MASSIVE performance increase when using shared memory and loading batch of pos / mass data
 
 ## todo
 

@@ -196,14 +196,14 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
+    void (*gpu_cbk)();
     void imp_NBody();
 
     void init(){
         checkCudaErrors( cudaMallocHost((void**) &nbd::h_bodies1, nbd::MAXBODYCOUNT * sizeof(Body)) );
 	    checkCudaErrors( cudaMalloc((void**)&nbd::d_bodies1, nbd::MAXBODYCOUNT * sizeof(Body)) );
 	    checkCudaErrors( cudaMalloc((void**)&nbd::d_bodies2, nbd::MAXBODYCOUNT * sizeof(Body)) );
-
-        gbl::display = imp_NBody;
+        gbl::display = gpu_cbk; //uses intermediate gpu cbk for saving mode when switching back to cpu
     }
     void clean(){
         checkCudaErrors( cudaFreeHost(nbd::h_bodies1));
@@ -222,7 +222,7 @@ namespace gpu{
 
 
 
-    __global__ void kernelNbody(Body* oldBodies, Body* newBodies) {
+    __global__ void kernelNBody(Body* oldBodies, Body* newBodies) {
 		int index = threadIdx.x + blockIdx.x * blockDim.x;
 		if (index < d_params.nbBodies) {
             //access constant memory once per thread !
@@ -248,13 +248,78 @@ namespace gpu{
 		}
 	}
 
+    __global__ void kernelNBodySHARED(Body* oldBodies, Body* newBodies){
+        //warning : harcodec values for block of size 256
+        const int BDIM = 256;
+        int index = threadIdx.x + blockIdx.x * blockDim.x; //which body will be updated same
+        __shared__ float3 shared_pos[BDIM]; //the 256 position of nbodies
+        __shared__ float shared_mass[BDIM]; //the 265 mass of nbodies
+		if (index < d_params.nbBodies) {
+            //access constant memory once per thread !
+            //Param t_params = d_params;
+            //float scale = t_params.scale;
+            //float sx = t_params.mx;
+            //float sy = t_params.my;
+
+            int i = index;
+            float3 mypos = oldBodies[i].pos;
+            float3 acc = {0.0f, 0.0f, 0.0f};
+
+            int loadIndex =0;
+            unsigned int tid = threadIdx.x;
+            while(loadIndex < d_params.nbBodies){
+                if(tid+loadIndex< d_params.nbBodies){
+                    shared_pos[tid] = oldBodies[tid+loadIndex].pos; //prevent illegal memory access at the end
+                    shared_mass[tid] = oldBodies[tid+loadIndex].mass;
+                } 
+                else {
+                    shared_pos[tid] = {0.0f,0.0f,0.0f};
+                    shared_mass[tid] = 0.0f; //give a mass to zero for tails at the end
+                }
+                __syncthreads();
+
+                //sum partial acc
+                for (int j = 0; j < BDIM; j++) {
+                    if (i != j) { 
+                        float3 r = nbd::minus(shared_pos[j], mypos);
+                        float d = nbd::length2(r) + d_params.EPS2;  
+                        float factor = d_params.G * shared_mass[j]/ sqrtf(d * d * d);
+                        acc = nbd::add(acc, nbd::multiply(factor, r));
+                    }
+                }
+
+                //move on to the next batch
+                loadIndex += BDIM;
+            }
+
+
+            newBodies[i].pos = nbd::add(oldBodies[i].pos, oldBodies[i].vel);
+            newBodies[i].vel = nbd::add(oldBodies[i].vel, acc);
+            if(d_params.updtcol) nbd::updtColors(newBodies[i],d_params.slowspeed, d_params.fastspeed, &d_params.col_slow, &d_params.col_fast);         
+		}
+    }
+
     void imp_NBody(){
         //initialisation
         int N = h_params.nbBodies;
 		int M = 256;
 
         //computation
-        kernelNbody << <(N + M - 1) / M, M >> > (nbd::d_bodies1, nbd::d_bodies2);
+        kernelNBody << <(N + M - 1) / M, M >> > (nbd::d_bodies1, nbd::d_bodies2);
+        checkKernelErrors();
+
+        //fecth newly computed bodies from GPU to CPU and swap grid
+        checkCudaErrors( cudaMemcpy(nbd::h_bodies1, nbd::d_bodies2, N * sizeof(Body), cudaMemcpyDeviceToHost));
+        std::swap(nbd::d_bodies1, nbd::d_bodies2);
+    }
+
+    void imp_NBodySHARED(){
+        //initialisation
+        int N = h_params.nbBodies;
+		int M = 256;
+
+        //computation
+        kernelNBodySHARED << <(N + M - 1) / M, M >> > (nbd::d_bodies1, nbd::d_bodies2);
         checkKernelErrors();
 
         //fecth newly computed bodies from GPU to CPU and swap grid
@@ -328,7 +393,7 @@ namespace wdw{
         ImGui::SeparatorText("Coloring");
         const char* items[] = { "all white", "rgb cube", "speed scale"};
 
-        if (ImGui::Combo("Combo", &nbd::current_col_mode, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo("Color scheme", &nbd::current_col_mode, items, IM_ARRAYSIZE(items))) {
             h_params.updtcol = nbd::current_col_mode == 2;
         }
         switch (nbd::current_col_mode)
@@ -361,21 +426,23 @@ namespace wdw{
     void wdw_additional(){
         ImGui::SeparatorText("GPU mode");
         static int current_gpu_mode = 0;
-        const char* items[] = { "default", "shared"};
+        const char* items[] = { "version 1", "version 2"};
 
-        if (ImGui::Combo("Combo", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
+        if (ImGui::Combo("GPU version", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
             {
-            //TODO CHANGE CALLBACK
-            case 0: /* gbl::display = gpu::imp_Bugs_default; */ break;
-            case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
+            //save cbk for switching between modes
+            case 0: gpu::gpu_cbk = gpu::imp_NBody; break;
+            case 1: gpu::gpu_cbk = gpu::imp_NBodySHARED; break;
             default: break;
             }
+            gbl::display = gpu::gpu_cbk;
         }
-
-        ImGui::SameLine(); HelpMarker(
-                    "refer to readme.md for additional information\n"
-                    "on how shared mode works");
+        if(current_gpu_mode == 1){
+            ImGui::SameLine(); HelpMarker(
+                    "preload batchs of pos and mass into shared memory\n"
+                    "to lower global memory access count");
+        }
     }
 }//end namespace wdw
 
@@ -550,6 +617,8 @@ int main(void){
         //framerate
         gbl::max_fps = 60;
         
+        //gpu modes
+        gpu::gpu_cbk = gpu::imp_NBody;
 
         //nbd
         h_params.nbBodies = 32;
