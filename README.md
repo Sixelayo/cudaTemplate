@@ -1,6 +1,12 @@
+# How to compile
+
+- see : [this repo](https://github.com/Sixelayo/CY_Visual_GPU)
+- additionally, for  tp4 and tp5, you'll need to link with glm headers. I've tried one installed with the MSYS2 commande lines but there seemed to be compatibility issues with MSVC (even tho it's supposed to be only header files ?), so I got glm with vcpkg `vcpkg install glm:x64-windows`
+
 # generic remarks
 
-- The whole architecture of passing a Param Struct to gpu could be reworked as it was made early wihtout optimisation knowledge
+- The whole architecture of passing a Param Struct to gpu could be reworked as it was made early wihtout optimisation knowledge. (I have a small `struct Param` in cpu that I pass into constant memory each frame which is good but I've done some weird preloading parameters as locals variables in some kernels)
+- unlike previous work, I felt much more confident about overall architecture (that it to say, it wouldn't be impossible to come back to this code whereas I would be lost if I tried to get back to PhysicsEngine code), even if it's far from perfect it's way cleaner and easier to work with.
 
 
 # List of .cu files
@@ -9,12 +15,13 @@
 
 ## julia
 
-- utiliser la shared memory pour les params de julia !
--
+### functionalities & remarks
+
+- everything asked
 
 ### preset
 
-- handle more smart preset switching from one mode to another so there's no side effect when playing arround, clicking abutton always reset ALL param
+I did not have time to properly bind presets to all parameteres so it can be a little unintuitive. Here's a video where 
 
 
 ## ray marching
@@ -83,9 +90,9 @@ Optional things I would've had given infinite time :
 
 - everything asked is present (TODO CHECK)
 - I also adapted camera.c for glfw and plugged callback into my template file but things could be more way more clean
-- I did not had time to properly reimplement camera controls
+- Only primitive camera control to move eye arround the center were added
 - I rewrite a few things and now use a struct Body{} instead of raw global array.
-- you can view colors on particles (bade on position, or normalized speed)
+- you can view colors on particles (bade on position, or a mapranged of normalized speed)
 
 ## todo
 

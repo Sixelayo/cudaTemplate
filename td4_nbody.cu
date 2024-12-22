@@ -22,9 +22,34 @@ namespace gbl{
 namespace gpu{
 }
 
+//complexe numbe stored as a+ib
+class Complex {
+public:
+    float a;
+    float b;
+    __device__ __host__ Complex(){}
+    __device__ __host__ Complex(float a, float b) : a(a), b(b){}
+
+    __device__ __host__ Complex operator+(const Complex& other) const {
+        return Complex(a + other.a, b + other.b);
+    }
+    __device__ __host__ Complex operator*(const Complex& other) const {
+        return Complex(a * other.a - b * other.b, a * other.b + b * other.a);
+    }
+
+};
+struct MyCol{ //used for passing color to gpu for type compatibility reasons
+    float x, y, z, w;
+    __device__ __host__ MyCol(){}
+    __device__ __host__ MyCol(float x, float y, float z, float w) : x(x), y(y), z(z), w(w){}
+    __device__ __host__ MyCol(float* c) : x(c[0]), y(c[1]), z(c[2]), w(c[3]){}
+    __device__ __host__ MyCol(const MyCol& c) : x(c.x), y(c.y), z(c.z), w(c.w){}
+};
+
 struct Body{
     float3 pos; 
     float3 vel;
+    float3 col;
     float mass;
 };
 
@@ -39,6 +64,10 @@ namespace nbd{
     float dvel = 0.0001f;
     static float minmass = 1.0f;
     static float maxmass = 5.0f;
+
+    static int current_col_mode = 1;
+    static float PARAM_slow[4] = { 0.0f, 0.0f, 1.0f, 1.0f };
+    static float PARAM_fast[4] = { 0.0f, 1.0f, 0.0f, 1.0f };
 
 
     void randomBodies(Body* bodies, int bodycount){
@@ -88,35 +117,20 @@ namespace nbd{
     __host__ __device__ inline float length2(float3 v) {
         return v.x * v.x + v.y * v.y + v.z * v.z;
     }
+    __host__ __device__ void updtColors(Body& body, float minclamp, float maxclamp, MyCol* c1, MyCol* c2){
+        float speed = sqrtf(length2(body.vel));
+        speed = speed < minclamp ? minclamp : speed;
+        speed = speed > maxclamp ? maxclamp : speed;
+        float t = (speed - minclamp) / (maxclamp - minclamp);
+        body.col.x = t*c2->x + (1-t) * c1->x;
+        body.col.y = t*c2->y + (1-t) * c1->y;
+        body.col.z = t*c2->z + (1-t) * c1->z;
+    }
 
 
 
 }
 
-
-//complexe numbe stored as a+ib
-class Complex {
-public:
-    float a;
-    float b;
-    __device__ __host__ Complex(){}
-    __device__ __host__ Complex(float a, float b) : a(a), b(b){}
-
-    __device__ __host__ Complex operator+(const Complex& other) const {
-        return Complex(a + other.a, b + other.b);
-    }
-    __device__ __host__ Complex operator*(const Complex& other) const {
-        return Complex(a * other.a - b * other.b, a * other.b + b * other.a);
-    }
-
-};
-struct MyCol{ //used for passing color to gpu
-    float x, y, z, w;
-    __device__ __host__ MyCol(){}
-    __device__ __host__ MyCol(float x, float y, float z, float w) : x(x), y(y), z(z), w(w){}
-    __device__ __host__ MyCol(float* c) : x(c[0]), y(c[1]), z(c[2]), w(c[3]){}
-    __device__ __host__ MyCol(const MyCol& c) : x(c.x), y(c.y), z(c.z), w(c.w){}
-};
 
 
 struct Param {
@@ -128,6 +142,12 @@ struct Param {
     int nbBodies; //nb à afficher
     float G;
     float EPS2;
+
+    bool updtcol;
+    float slowspeed;
+    float fastspeed;
+    MyCol col_slow;
+    MyCol col_fast;
 };
 Param h_params;
 __constant__ Param d_params;
@@ -167,6 +187,7 @@ namespace cpu{
             }
             nbd::h_bodies2[i].pos = nbd::add(nbd::h_bodies1[i].pos, nbd::h_bodies1[i].vel);
             nbd::h_bodies2[i].vel = nbd::add(nbd::h_bodies1[i].vel, acc);
+            if(h_params.updtcol) nbd::updtColors(nbd::h_bodies2[i],h_params.slowspeed, h_params.fastspeed, &h_params.col_slow, &h_params.col_fast);
         }
 
         std::swap(nbd::h_bodies1, nbd::h_bodies2);
@@ -222,7 +243,8 @@ namespace gpu{
                 }
             }
             newBodies[i].pos = nbd::add(oldBodies[i].pos, oldBodies[i].vel);
-            newBodies[i].vel = nbd::add(oldBodies[i].vel, acc);            
+            newBodies[i].vel = nbd::add(oldBodies[i].vel, acc);
+            if(d_params.updtcol) nbd::updtColors(newBodies[i],d_params.slowspeed, d_params.fastspeed, &d_params.col_slow, &d_params.col_fast);         
 		}
 	}
 
@@ -301,6 +323,35 @@ namespace wdw{
         }
         ImGui::DragFloat("dpos", &nbd::dpos, 0.01f, 1.0f, 5.0f, "%.5f");
         ImGui::DragFloat("dvel", &nbd::dvel, 0.01f, 0.0f, 1.0f, "%.5f");
+
+
+        ImGui::SeparatorText("Coloring");
+        const char* items[] = { "all white", "rgb cube", "speed scale"};
+
+        if (ImGui::Combo("Combo", &nbd::current_col_mode, items, IM_ARRAYSIZE(items))) {
+            h_params.updtcol = nbd::current_col_mode == 2;
+        }
+        switch (nbd::current_col_mode)
+        {
+        case 0: /* gbl::display = gpu::imp_Bugs_default; */ 
+            break;
+        case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
+        case 2: /* gbl::display = gpu::imp_Bugs_shared; */
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.3f);
+            ImGui::DragFloat("##slow", &h_params.slowspeed, 0.01f, 0.0f, 1.0f, "%.3f"); //todo here setnexitem widht
+            ImGui::SameLine(); ImGui::Text("Slow - Fast");
+            ImGui::SameLine(); HelpMarker("Linear interpolation between the 2 colors factored by speed");
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.3f);
+            ImGui::DragFloat("##fast", &h_params.fastspeed, 0.01f, 0.0f, 1.0f, "%.3f");
+            if(ImGui::ColorEdit4("##colslow", (float*)&nbd::PARAM_slow, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float)) 
+                h_params.col_slow = MyCol{nbd::PARAM_slow};
+            if(ImGui::ColorEdit4("##colfast", (float*)&nbd::PARAM_fast, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float)) 
+                h_params.col_fast = MyCol{nbd::PARAM_fast};
+            
+            break;
+        default: break;
+        }
 
 
 
@@ -436,9 +487,39 @@ namespace cbk{
 
 }//end namespace cbk
 
-int main(void){
-    
+void runColroing1(){
+    cameraApply(-h_params.mx,h_params.my);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
+    glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
+    glDisableClientState(GL_VERTEX_ARRAY);
+}
+void runColroing2(){
+    cameraApply(-h_params.mx,h_params.my);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
+    glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
+    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos)); //todo replace with color
+    glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
+    glDisableClientState(GL_COLOR_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+}
+void runColroing3(){
+    cameraApply(-h_params.mx,h_params.my);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glEnableClientState(GL_VERTEX_ARRAY);
+    glEnableClientState(GL_COLOR_ARRAY);
+    glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
+    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->col)); //todo replace with color
+    glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
+    glDisableClientState(GL_COLOR_ARRAY);
+    glDisableClientState(GL_VERTEX_ARRAY);
+}
 
+
+int main(void){
     GLFWwindow* window;
 
     /* Initialize the library */
@@ -474,6 +555,12 @@ int main(void){
         h_params.nbBodies = 32;
         h_params.G = 0.0000001f;
         h_params.EPS2 = 0.1f;
+
+        h_params.updtcol = false; //disable color computation
+        h_params.slowspeed = 0;
+        h_params.fastspeed = 0.03;
+        h_params.col_slow = MyCol(nbd::PARAM_slow);
+        h_params.col_fast = MyCol(nbd::PARAM_fast);
 
         glClearColor(0.3,0.3,0.3,1.0);
         glColor4f(1.0,1.0,1.0,1.0);
@@ -520,15 +607,12 @@ int main(void){
             last_frame_time = curr_time;
         }        
         if(!gbl::paused){
-            cameraApply();
-            glClear(GL_COLOR_BUFFER_BIT);
-            glEnableClientState(GL_VERTEX_ARRAY);
-            glEnableClientState(GL_COLOR_ARRAY);
-            glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
-            glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos)); //todo replace with color
-	        glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
-            glDisableClientState(GL_COLOR_ARRAY);
-	        glDisableClientState(GL_VERTEX_ARRAY);
+            switch (nbd::current_col_mode)
+            {
+            case 0: runColroing1(); break;;
+            case 1: runColroing2(); break;;
+            case 2: runColroing3(); break;;            
+            }
         }
   
 

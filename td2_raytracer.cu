@@ -338,7 +338,7 @@ namespace wdw{
 
         
         //float inputWidth = ImGui::CalcTextSize("-0.000").x + ImGui::GetStyle().FramePadding.x * 2;
-        ImGui::Text("Camera Coordinate : %.2f/%.2f",h_params.offset.a, h_params.offset.b);
+        ImGui::Text("Camera Coordinate : %.2f/%.2f",h_params.mx, h_params.my);
 
         ImGui::SeparatorText("params : ");
         ImGui::InputInt("loaded sphere", &rtc::max_nb_sphere);
