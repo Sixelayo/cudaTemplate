@@ -1,6 +1,8 @@
+//#include "gladUtil.hpp"
 #include "util.hpp"
 #define TITLE "Julia"
 
+GLFWwindow* window;
 
 //mandatory forward declaration
 namespace wdw{
@@ -195,12 +197,13 @@ namespace cpu{
 }//end namespace cpu
 
 namespace gpu{
+    void (*gpu_cbk)();
     void imp_Julia();
 
     void init(){
         checkCudaErrors( cudaMallocHost((void**) &gbl::pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
 	    checkCudaErrors( cudaMalloc((void**)&gbl::d_pixels, gbl::SCREEN_X * gbl::SCREEN_Y * sizeof(float4)) );
-        gbl::display = imp_Julia;
+        gbl::display = gpu_cbk;
     }
     void clean(){
         checkCudaErrors( cudaFreeHost(gbl::pixels));
@@ -485,7 +488,11 @@ namespace gpu{
 }//end namespace gpu
 
 namespace wdw{
-    void wdw_additional(){}
+    void wdw_additional(){
+        // if(ImGui::Checkbox("use interop", &use_interop)){
+            
+        // };
+    }
 
     void julMandParam(){
         ImGui::Begin("Mandelbrot & Julia Param");
@@ -680,8 +687,8 @@ namespace cbk{
 
 }//end namespace cbk
 
+
 int main(void){
-    GLFWwindow* window;
 
     /* Initialize the library */
     if (!glfwInit())
@@ -694,9 +701,20 @@ int main(void){
         return -1;
     }
 
+    
+
     /* Make the window's context current */
     glfwMakeContextCurrent(window);
     utl::initImGui(window);
+
+    // int version = gladLoadGL(glfwGetProcAddress);
+    // if (version == 0) {
+    //     printf("Failed to initialize OpenGL context\n");
+    //     return -1;
+    // }
+    // // Successfully loaded OpenGL
+    // printf("Loaded OpenGL %d.%d\n", GLAD_VERSION_MAJOR(version), GLAD_VERSION_MINOR(version));
+
 
     /* malloc values ...*/
     init();
@@ -714,6 +732,8 @@ int main(void){
         h_params.easing_fac_in = 1.0f;
         h_params.easing_fac_out = 0.2f;
         preset::colors_1_default();
+
+        gpu::gpu_cbk = gpu::imp_Julia;
     }
 
     /* Initialize callback*/
@@ -723,30 +743,66 @@ int main(void){
     glfwSetScrollCallback(window, cbk::scroll);
     glfwSetWindowSizeCallback(window, cbk::window_size);
 
+    //interop
+    // interopPBO::step1(window);
+    // interopPBO::step2();
+
 
     /* Loop until the user closes the window */
     while (!glfwWindowShouldClose(window))
     {
-        /* Poll for and process events */
-        glfwPollEvents();
+        //if(!use_interop){
+            /* Poll for and process events */
+            glfwPollEvents();
 
-        /* Interface*/
-        utl::newframeImGui();
-        if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
-        
-        /* Render here */
-        gbl::calculate(window);
-        gpu::setDeviceParameters(h_params);
-        gbl::display();
-        if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
-        
-        /* end frame for imgui*/
-        utl::endframeImGui();
-        utl::multiViewportImGui(window);
-        
+            /* Interface*/
+            utl::newframeImGui();
+            if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+            
+            /* Render here */
+            gbl::calculate(window);
+            gpu::setDeviceParameters(h_params);
+            gbl::display();
+            if(!gbl::paused) glDrawPixels(gbl::SCREEN_X, gbl::SCREEN_Y, GL_RGBA, GL_FLOAT, gbl::pixels);
+            
+            /* end frame for imgui*/
+            utl::endframeImGui();
+            utl::multiViewportImGui(window);
+            
 
-        /* Swap front and back buffers */
-        glfwSwapBuffers(window);
+            /* Swap front and back buffers */
+            glfwSwapBuffers(window);
+        //}
+        // else{
+        //     //use interop
+        //     interopPBO::step34(gbl::d_pixels);
+            
+
+        //     /* Poll for and process events */
+        //     glfwPollEvents();
+
+        //     /* Interface*/
+        //     utl::newframeImGui();
+        //     if(gbl::otherWindow) utl::wdw_info(gbl::mode, gbl::SCREEN_X,gbl::SCREEN_Y,gbl::currentFPS);
+            
+        //     /* Render here */
+        //     gbl::calculate(window);
+        //     gpu::setDeviceParameters(h_params);
+        //     gbl::display();
+        //     interopPBO::step6();
+        //     interopPBO::step7(window);
+        //     interopPBO::step8();
+            
+            
+        //     /* end frame for imgui*/
+        //     utl::endframeImGui();
+        //     utl::multiViewportImGui(window);
+            
+
+        //     /* Swap front and back buffers */
+        //     glfwSwapBuffers(window);
+
+        // }
     }
 
     utl::shutdownImGui();

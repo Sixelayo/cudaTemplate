@@ -1,6 +1,8 @@
 //glfw includes
 #include <GLFW/glfw3.h>
+#include <cuda_gl_interop.h>
 #include <iostream>
+
 
 //imgui includes
 #include "./imgui/imgui.h"
@@ -164,4 +166,3 @@ void shutdownImGui(){
 
 
 } //end namespace utl
-
