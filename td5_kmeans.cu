@@ -373,7 +373,7 @@ namespace gpu{
 
     }
 
-    void imp_KmeansV2(){ //TODO change
+    void imp_KmeansV2(){
         //initialisation
         int N = kmn::NBPOINTS;
 		int M = 256;
@@ -714,7 +714,7 @@ int main(void){
             glPointSize(3.0f);
             glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
             glEnableClientState(GL_VERTEX_ARRAY);
-            glVertexPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_centroids1->pos));//todo points position
+            glVertexPointer(3, GL_FLOAT, sizeof(Point), &(kmn::h_centroids1->pos));
             glDrawArrays(GL_POINTS, 0, kmn::NBCENTROIDS);
             glDisableClientState(GL_VERTEX_ARRAY);
         }

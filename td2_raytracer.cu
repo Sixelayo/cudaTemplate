@@ -299,7 +299,7 @@ namespace gpu{
 
                 // Launch kernel for this chunk
                 kernelRayTracerCONSTANT<<<(chunkSize + M - 1) / M, M, 0, rtc::stream[k]>>>(
-                    gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y, startIdx); //todo here startIdx instead of 1 MUST BE  REMOVE PARAM
+                    gbl::d_pixels, gbl::SCREEN_X, gbl::SCREEN_Y, startIdx);
                 
 
                 //checkKernelErrors();
@@ -343,7 +343,7 @@ namespace wdw{
         ImGui::SeparatorText("params : ");
         ImGui::InputInt("loaded sphere", &rtc::max_nb_sphere);
         ImGui::SameLine(); HelpMarker("the number of sphere loaded into memory");
-        ImGui::SliderInt("displayed spheres", &h_params.displayCount, 1, rtc::max_nb_sphere); //todo helmarker
+        ImGui::SliderInt("displayed spheres", &h_params.displayCount, 1, rtc::max_nb_sphere);
         ImGui::SameLine(); HelpMarker("the number that will be displayed");
         if(ImGui::Button("regenerate")){
             gbl::paused = true;
@@ -368,7 +368,6 @@ namespace wdw{
         if (ImGui::Combo("##gpumode", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
             {
-            //TODO CHANGE CALLBACK
             case 0: /* gbl::display = gpu::imp_Bugs_default; */ break;
             case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
             default: break;
@@ -377,7 +376,6 @@ namespace wdw{
         ImGui::SameLine(); 
         switch (current_gpu_mode)
             {
-            //TODO CHANGE CALLBACK
             case 0: 
                 HelpMarker("version 1 : each trade <=> 1 pixel");
                 break;

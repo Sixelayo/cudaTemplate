@@ -543,31 +543,6 @@ namespace wdw{
 
 
 
-        /*
-        if (ImGui::TreeNode("Color management"))
-        {
-            static float c_in[4] = { 0.8f, 0.3f, 0.4f, 1.0f };
-            static float c_step[4] = { 1.0f, 0.5f, 0.2f, 1.0f };
-            static float c_out[4] = { 0.4f, 0.7f, 0.9f, 1.0f };
-            ImGui::ColorEdit4("ease in color", (float*)&c_in, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("Step color", (float*)&c_step, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
-            ImGui::ColorEdit4("ease out color", (float*)&c_out, ImGuiColorEditFlags_DisplayRGB | ImGuiColorEditFlags_InputRGB | ImGuiColorEditFlags_Float);
-            ImGui::DragFloat("in easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
-            ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.001f,2.0f);
-            
-            h_params.color_easeIn = MyCol{c_in};
-            h_params.color_step = MyCol{c_step};
-            h_params.color_easeOut = MyCol{c_out};
-
-            if(ImGui::Button("foo")) { //torm
-                std::cout << c_step[0] << " / " << c_step[1] << " / " << c_step[2] << " /" <<c_step[3] <<"\n";
-                std::cout << c_out[0] << " / " << c_out[1] << " / " << c_out[2] << " /" << c_out[3] <<"\n";
-                std::cout << c_in[0] << " / " << c_in[1] << " / " << c_in[2]<< " /"  << c_in[3] <<"\n";
-            }
-
-            ImGui::TreePop();
-        }*/
-
         ImGui::End();
     }
 
@@ -579,7 +554,6 @@ namespace wdw{
         if (ImGui::Combo("Combo", &current_gpu_mode, items, IM_ARRAYSIZE(items))) {
             switch (current_gpu_mode)
             {
-            //TODO CHANGE CALLBACK
             case 0: /* gbl::display = gpu::imp_Bugs_default; */ break;
             case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
             default: break;

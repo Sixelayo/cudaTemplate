@@ -403,7 +403,7 @@ namespace wdw{
         case 1: /* gbl::display = gpu::imp_Bugs_shared; */ break;
         case 2: /* gbl::display = gpu::imp_Bugs_shared; */
             ImGui::SetNextItemWidth(ImGui::GetContentRegionAvail().x * 0.3f);
-            ImGui::DragFloat("##slow", &h_params.slowspeed, 0.01f, 0.0f, 1.0f, "%.3f"); //todo here setnexitem widht
+            ImGui::DragFloat("##slow", &h_params.slowspeed, 0.01f, 0.0f, 1.0f, "%.3f");
             ImGui::SameLine(); ImGui::Text("Slow - Fast");
             ImGui::SameLine(); HelpMarker("Linear interpolation between the 2 colors factored by speed");
             ImGui::SameLine();
@@ -569,7 +569,7 @@ void runColroing2(){
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
     glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
-    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos)); //todo replace with color
+    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
     glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
     glDisableClientState(GL_COLOR_ARRAY);
     glDisableClientState(GL_VERTEX_ARRAY);
@@ -580,7 +580,7 @@ void runColroing3(){
     glEnableClientState(GL_VERTEX_ARRAY);
     glEnableClientState(GL_COLOR_ARRAY);
     glVertexPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->pos));
-    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->col)); //todo replace with color
+    glColorPointer(3, GL_FLOAT, sizeof(Body), &(nbd::h_bodies1->col));
     glDrawArrays(GL_POINTS, 0, h_params.nbBodies);
     glDisableClientState(GL_COLOR_ARRAY);
     glDisableClientState(GL_VERTEX_ARRAY);

@@ -436,9 +436,7 @@ namespace gpu{
 	}
 
     void imp_Mandelbrot(){
-        if(gbl::otherWindow){//todo replace with mandelbrot specific
-            //wdw::mandelbrotParam();
-            //wdw::mandelbrotPreset();
+        if(gbl::otherWindow){
             wdw::julMandParam();
             wdw::julMandPreset();
         }
@@ -468,9 +466,7 @@ namespace gpu{
 	}
 
     void imp_Burningship(){
-        if(gbl::otherWindow){//todo replace with mandelbrot specific
-            //wdw::mandelbrotParam();
-            //wdw::mandelbrotPreset();
+        if(gbl::otherWindow){
             wdw::julMandParam();
             wdw::julMandPreset();
         }
@@ -489,6 +485,8 @@ namespace gpu{
 }//end namespace gpu
 
 namespace wdw{
+    void wdw_additional(){}
+
     void julMandParam(){
         ImGui::Begin("Mandelbrot & Julia Param");
         if(ImGui::Button("center")) preset::center();
@@ -533,12 +531,6 @@ namespace wdw{
             ImGui::DragFloat("in easing facor", &h_params.easing_fac_in, 0.005f,0.01f,10.0f);
             ImGui::DragFloat("out easing factor", &h_params.easing_fac_out, 0.005f,0.001f,2.0f);
 
-
-            // if(ImGui::Button("foo")) { //torm
-            //     std::cout << c_step[0] << " / " << c_step[1] << " / " << c_step[2] << " /" <<c_step[3] <<"\n";
-            //     std::cout << c_out[0] << " / " << c_out[1] << " / " << c_out[2] << " /" << c_out[3] <<"\n";
-            //     std::cout << c_in[0] << " / " << c_in[1] << " / " << c_in[2]<< " /"  << c_in[3] <<"\n";
-            // }
 
             ImGui::TreePop();
         }

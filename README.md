@@ -12,6 +12,7 @@
 # List of .cu files
 
 > Press w at any point to show / hide additional windows
+
 > hold `ctrl`while scrolling to zoom faster
 
 ## julia
@@ -44,7 +45,7 @@ I did not have time to properly bind presets to all parameteres so it can be a l
 
 ### functionalities & remarks
 
-- everything asked except shared memory TODO
+- everything asked (except shared memory memory version)
 - Big confusion : between standard notation : is a cell its own neighbor ? (online ressources uses different convention)
 - you can freely resize window in CPU or GPU mode (but grid state is'nt saved)
 - cells are stored as float4 (and not boolean) to allow easier implementation of color variation.
@@ -73,12 +74,9 @@ I did not have time to properly bind presets to all parameteres so it can be a l
 - https://conwaylife.com/wiki/Main_Page
 
 
-### TODO
+### next
 
-Mandatory
-- utiliser la shared memory pour lire tuile par tuile
-
-Optional things I would've had given infinite time :
+Optional things I would've add given infinite time :
 - add support for any Rulestring, not only those where Survive / Birth are connex intervals 2x2 /Move / Day and Night / Anneal / Diamoeba ...
 - keeping grid configuration when switching from CPU to GPU and GPU to CPU
 - better color management
@@ -89,7 +87,7 @@ Optional things I would've had given infinite time :
 
 ## td4 nbody
 
-- everything asked is present (TODO CHECK)
+- everything asked is present
 - I also adapted camera.c for glfw and plugged callback into my template file but things could be more way more clean
 - Only primitive camera control to move eye arround the center were added
 - I rewrite a few things and now use a struct Body{} instead of raw global array.
